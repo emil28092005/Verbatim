@@ -165,7 +165,10 @@ impl Game {
     }
 
     pub fn run<R: Renderer>(&mut self, renderer: &mut R) {
-        let _ = renderer.init();
+        if let Err(e) = renderer.init() {
+            eprintln!("Renderer init failed: {}", e);
+            return;
+        }
         self.init_world();
 
         self.last_time = Instant::now();
@@ -187,12 +190,17 @@ impl Game {
             self.cam_x = px as i32 - (vw as i32 / 2);
             self.cam_y = py as i32 - (vh as i32 / 2);
 
-            let _ = renderer.render(&self.grid, &self.entities, self.cam_x, self.cam_y);
+            if let Err(e) = renderer.render(&self.grid, &self.entities, self.cam_x, self.cam_y) {
+                eprintln!("Render error: {}", e);
+                break;
+            }
 
             self.handle_input(vw, vh);
         }
 
-        let _ = renderer.shutdown();
+        if let Err(e) = renderer.shutdown() {
+            eprintln!("Renderer shutdown failed: {}", e);
+        }
     }
 
     pub fn handle_input(&mut self, vw: usize, vh: usize) {
