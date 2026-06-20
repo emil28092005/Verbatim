@@ -87,14 +87,18 @@ pub struct VerletSolver {
     pub gravity: f32,
     pub damping: f32,
     pub dt: f32,
+    pub max_vel: f32,
+    pub substeps: u32,
 }
 
 impl VerletSolver {
     pub fn new() -> Self {
         Self {
-            gravity: 0.3,
+            gravity: 0.08,
             damping: 0.98,
             dt: 1.0,
+            max_vel: 0.8,
+            substeps: 4,
         }
     }
 
@@ -103,8 +107,15 @@ impl VerletSolver {
             if !b.alive {
                 continue;
             }
-            let vx = (b.x - b.old_x) * self.damping;
-            let vy = (b.y - b.old_y) * self.damping;
+            let mut vx = (b.x - b.old_x) * self.damping;
+            let mut vy = (b.y - b.old_y) * self.damping;
+
+            let v_mag = (vx * vx + vy * vy).sqrt();
+            if v_mag > self.max_vel {
+                vx = vx / v_mag * self.max_vel;
+                vy = vy / v_mag * self.max_vel;
+            }
+
             b.old_x = b.x;
             b.old_y = b.y;
             b.x += vx + b.ax * self.dt * self.dt;

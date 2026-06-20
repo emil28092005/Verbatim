@@ -68,14 +68,22 @@ impl Game {
             }
         }
 
+        self.grid.fill_border(MaterialId::Stone);
+
         let cx = (w / 2) as f32;
-        let cy = (h as f32 / 2.0) - 20.0;
+        let surface_x = cx as i32;
+        let mut surface_y = h as i32 - 3;
+        for y in 0..h as i32 {
+            if self.grid.get(surface_x, y).is_solid() && self.grid.get(surface_x, y).material != MaterialId::Stone {
+                surface_y = y;
+                break;
+            }
+        }
+        let cy = (surface_y as f32) - 4.0;
         self.player.spawn_at(&mut self.entities, cx, cy);
 
         let (px, py) = self.player.center(&self.entities);
         self.center_camera_on(px, py);
-
-        self.grid.fill_border(MaterialId::Stone);
     }
 
     fn center_camera_on(&mut self, px: f32, py: f32) {
@@ -163,7 +171,7 @@ impl Game {
         false
     }
 
-    fn fixed_update(&mut self) {
+    pub fn fixed_update(&mut self) {
         self.tick += 1;
 
         self.ca.step(&mut self.grid);
@@ -179,6 +187,7 @@ impl Game {
 
     fn update_entities(&mut self) {
         let solver = self.verlet.clone();
+        let substeps = solver.substeps;
         let grid = &self.grid;
 
         let entities_data: Vec<(usize, Vec<crate::physics::verlet::SubBody>, Vec<crate::physics::verlet::Constraint>)>;
@@ -195,7 +204,6 @@ impl Game {
                 if !b.alive {
                     continue;
                 }
-
                 if b.on_fire {
                     b.fire_timer += 1;
                     b.health -= 0.3;
@@ -206,38 +214,40 @@ impl Game {
                 }
             }
 
-            solver.integrate(&mut bodies);
+            for _ in 0..substeps {
+                solver.integrate(&mut bodies);
 
-            for b in &mut bodies {
-                if !b.alive {
-                    continue;
-                }
-                let result = resolve_grid_collision(grid, b);
-                if result.touching_lava {
-                    b.health -= 2.0;
-                    if !b.on_fire {
-                        b.on_fire = true;
+                for b in &mut bodies {
+                    if !b.alive {
+                        continue;
+                    }
+                    let result = resolve_grid_collision(grid, b);
+                    if result.touching_lava {
+                        b.health -= 0.5;
+                        if !b.on_fire {
+                            b.on_fire = true;
+                        }
+                    }
+                    if result.touching_fire {
+                        b.health -= 0.15;
+                        if !b.on_fire && b.health < 80.0 {
+                            b.on_fire = true;
+                        }
+                    }
+                    if result.touching_acid {
+                        b.health -= 0.25;
+                    }
+                    if result.in_liquid {
+                        let body_density = crate::world::material::MaterialRegistry::instance()
+                            .get(b.material).density;
+                        if body_density > result.liquid_density {
+                            b.y += 0.005;
+                        }
                     }
                 }
-                if result.touching_fire {
-                    b.health -= 0.5;
-                    if !b.on_fire && b.health < 80.0 {
-                        b.on_fire = true;
-                    }
-                }
-                if result.touching_acid {
-                    b.health -= 1.0;
-                }
-                if result.in_liquid {
-                    let body_density = crate::world::material::MaterialRegistry::instance()
-                        .get(b.material).density;
-                    if body_density > result.liquid_density {
-                        b.y += 0.02;
-                    }
-                }
+
+                solver.solve_constraints(&mut bodies, &constraints, 2);
             }
-
-            solver.solve_constraints(&mut bodies, &constraints, 3);
 
             if let Some(e) = self.entities.all_mut().get_mut(idx) {
                 e.bodies = bodies;
@@ -295,9 +305,21 @@ impl Game {
             return;
         }
 
-        let (px, py) = self.player.center(&self.entities);
+        let (px, _py) = self.player.center(&self.entities);
         let spawn_x = px as i32 + if px as i32 % 2 == 0 { 15 } else { -15 };
-        let spawn_y = py as i32 - 5;
+        if !self.grid.in_bounds(spawn_x, 0) {
+            return;
+        }
+
+        let mut surface_y = self.grid.height as i32 - 3;
+        for y in 0..self.grid.height as i32 {
+            let cell = self.grid.get(spawn_x, y);
+            if cell.is_solid() && cell.material != MaterialId::Stone {
+                surface_y = y;
+                break;
+            }
+        }
+        let spawn_y = surface_y - 4;
 
         if !self.grid.in_bounds(spawn_x, spawn_y) {
             return;
