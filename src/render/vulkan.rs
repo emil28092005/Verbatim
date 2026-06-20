@@ -88,6 +88,7 @@ pub struct VulkanRenderer {
     descriptor_pool: vk::DescriptorPool,
     descriptor_set: vk::DescriptorSet,
     descriptor_set_layout: vk::DescriptorSetLayout,
+    tick_count: u64,
 }
 
 impl VulkanRenderer {
@@ -152,6 +153,7 @@ impl VulkanRenderer {
             atlas_image, atlas_memory, atlas_view, atlas_sampler, atlas_map,
             instance_buffer, instance_memory, instance_ptr, instance_count,
             descriptor_pool, descriptor_set, descriptor_set_layout,
+            tick_count: 0,
         })
     }
 
@@ -252,6 +254,20 @@ impl VulkanRenderer {
 
             device.cmd_begin_render_pass(cmd, &rp_info, vk::SubpassContents::INLINE);
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+
+            let viewport = vk::Viewport {
+                x: 0.0, y: 0.0,
+                width: self.swapchain_extent.width as f32,
+                height: self.swapchain_extent.height as f32,
+                min_depth: 0.0, max_depth: 1.0,
+            };
+            let scissor = vk::Rect2D {
+                offset: vk::Offset2D::default(),
+                extent: self.swapchain_extent,
+            };
+            device.cmd_set_viewport(cmd, 0, std::slice::from_ref(&viewport));
+            device.cmd_set_scissor(cmd, 0, std::slice::from_ref(&scissor));
+
             device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer, self.instance_buffer], &[0, 0]);
             device.cmd_bind_index_buffer(cmd, self.index_buffer, 0, vk::IndexType::UINT16);
             device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS,
@@ -285,6 +301,7 @@ impl VulkanRenderer {
         }
 
         self.frame_index = (self.frame_index + 1) % MAX_FRAMES;
+        self.tick_count += 1;
     }
 
     pub fn grid_w(&self) -> usize { self.grid_w }
@@ -330,11 +347,23 @@ fn create_instance(entry: &ash::Entry) -> Result<ash::Instance, String> {
     let app_info = vk::ApplicationInfo::default()
         .application_name(&app_name)
         .api_version(vk::API_VERSION_1_2);
-    let ext_names: Vec<CString> = vec![
+
+    let mut ext_names: Vec<CString> = vec![
         CString::new("VK_KHR_surface").unwrap(),
         CString::new("VK_KHR_xlib_surface").unwrap(),
         CString::new("VK_KHR_wayland_surface").unwrap(),
     ];
+
+    // Add debug utils extension if available
+    let avail_exts = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
+    let has_debug_utils = avail_exts.iter().any(|e| {
+        let name = unsafe { std::ffi::CStr::from_ptr(e.extension_name.as_ptr() as *const i8) };
+        name.to_str().unwrap_or("") == "VK_EXT_debug_utils"
+    });
+    if has_debug_utils {
+        ext_names.push(CString::new("VK_EXT_debug_utils").unwrap());
+    }
+
     let ext_ptrs: Vec<*const i8> = ext_names.iter().map(|n| n.as_ptr()).collect();
     let create_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
@@ -497,9 +526,11 @@ fn create_pipeline(device: &ash::Device, rp: vk::RenderPass, ds_layout: vk::Desc
     let vi = vk::PipelineVertexInputStateCreateInfo::default()
         .vertex_binding_descriptions(&bindings).vertex_attribute_descriptions(&attrs);
     let ia = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let vp = vk::Viewport { x: 0.0, y: 0.0, width: 1.0, height: 1.0, min_depth: 0.0, max_depth: 1.0 };
-    let sc = vk::Rect2D { offset: vk::Offset2D::default(), extent: vk::Extent2D { width: 4096, height: 4096 } };
-    let vs_state = vk::PipelineViewportStateCreateInfo::default().viewports(std::slice::from_ref(&vp)).scissors(std::slice::from_ref(&sc));
+    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+    let vs_state = vk::PipelineViewportStateCreateInfo::default()
+        .viewport_count(1)
+        .scissor_count(1);
     let rs = vk::PipelineRasterizationStateCreateInfo::default().line_width(1.0).cull_mode(vk::CullModeFlags::NONE);
     let ms = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
     let cba = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
@@ -513,7 +544,8 @@ fn create_pipeline(device: &ash::Device, rp: vk::RenderPass, ds_layout: vk::Desc
     let pi = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages).vertex_input_state(&vi).input_assembly_state(&ia)
         .viewport_state(&vs_state).rasterization_state(&rs).multisample_state(&ms)
-        .color_blend_state(&cb).layout(layout).render_pass(rp).subpass(0);
+        .color_blend_state(&cb).dynamic_state(&dynamic_state)
+        .layout(layout).render_pass(rp).subpass(0);
     let pipes = unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pi), None) }
         .map_err(|(_, e)| format!("pipeline: {e:?}"))?;
     unsafe { device.destroy_shader_module(vm, None); device.destroy_shader_module(fm, None); }
