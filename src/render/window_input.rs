@@ -10,6 +10,7 @@ pub struct WindowInput {
     pub cam_down: bool,
     pub quit: bool,
     pub paint: Option<u8>,
+    jump_was_down: bool,
 }
 
 impl WindowInput {
@@ -18,30 +19,25 @@ impl WindowInput {
             left: false, right: false, jump: false,
             cam_left: false, cam_right: false, cam_up: false, cam_down: false,
             quit: false, paint: None,
+            jump_was_down: false,
         }
     }
 
     pub fn update(&mut self, keys: &[Key]) {
-        let was_jump = self.jump;
         let now_left = keys.contains(&Key::A) || keys.contains(&Key::Left);
         let now_right = keys.contains(&Key::D) || keys.contains(&Key::Right);
         let now_jump = keys.contains(&Key::W) || keys.contains(&Key::Space) || keys.contains(&Key::Up);
-        let now_cam_left = keys.contains(&Key::H);
-        let now_cam_right = keys.contains(&Key::L);
-        let now_cam_up = keys.contains(&Key::K);
-        let now_cam_down = keys.contains(&Key::J);
 
         self.left = now_left && !now_right;
         self.right = now_right && !now_left;
-        if now_left && now_right {
-            self.left = false;
-            self.right = false;
-        }
-        self.jump = now_jump && !was_jump;
-        self.cam_left = now_cam_left;
-        self.cam_right = now_cam_right;
-        self.cam_up = now_cam_up;
-        self.cam_down = now_cam_down;
+
+        self.jump = now_jump && !self.jump_was_down;
+        self.jump_was_down = now_jump;
+
+        self.cam_left = keys.contains(&Key::H);
+        self.cam_right = keys.contains(&Key::L);
+        self.cam_up = keys.contains(&Key::K);
+        self.cam_down = keys.contains(&Key::J);
         self.quit = keys.contains(&Key::Q) || keys.contains(&Key::Escape);
 
         self.paint = None;

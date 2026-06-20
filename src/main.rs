@@ -226,7 +226,7 @@ fn run_window_mode() {
             accumulator -= fixed_dt;
         }
 
-        let keys = renderer.get_pressed_keys();
+        let keys = renderer.get_keys_down();
         input.update(&keys);
 
         if input.quit {

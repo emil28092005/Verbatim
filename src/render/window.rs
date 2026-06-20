@@ -1,4 +1,4 @@
-use minifb::{Key, KeyRepeat, Window, WindowOptions};
+use minifb::{Key, Window, WindowOptions};
 use fontdue::{Font, FontSettings};
 use crate::entity::{EntityManager, EntityKind};
 use crate::world::cell::MaterialId;
@@ -7,14 +7,18 @@ use crate::world::material::MaterialRegistry;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;
+const ATLAS_COLS: usize = 16;
+const ATLAS_ROWS: usize = 16;
+const ATLAS_W: usize = ATLAS_COLS * CHAR_W;
+const ATLAS_H: usize = ATLAS_ROWS * CHAR_H;
 
 pub struct WindowRenderer {
     window: Window,
-    font: Font,
-    glyph_cache: std::collections::HashMap<(char, [u8; 3]), Vec<u32>>,
     width: usize,
     height: usize,
     pixels: Vec<u32>,
+    atlas: Vec<u8>,
+    atlas_map: std::collections::HashMap<char, (usize, usize)>,
 }
 
 impl WindowRenderer {
@@ -29,7 +33,7 @@ impl WindowRenderer {
         let width = 160;
         let height = 50;
 
-        let window = Window::new(
+        let mut window = Window::new(
             "Verbatim",
             width * CHAR_W,
             height * CHAR_H,
@@ -38,79 +42,105 @@ impl WindowRenderer {
                 ..WindowOptions::default()
             },
         ).expect("Failed to create window");
+        window.set_target_fps(60);
 
-        Self {
-            window,
-            font,
-            glyph_cache: std::collections::HashMap::new(),
-            width,
-            height,
-            pixels: vec![0u32; width * CHAR_W * height * CHAR_H],
-        }
-    }
+        let mut atlas = vec![0u8; ATLAS_W * ATLAS_H];
+        let mut atlas_map = std::collections::HashMap::new();
 
-    fn rgb_to_u32(r: u8, g: u8, b: u8) -> u32 {
-        ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-    }
+        let chars: Vec<char> = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~".chars().collect();
 
-    fn get_glyph(&mut self, ch: char, fg: [u8; 3]) -> Vec<u32> {
-        let key = (ch, fg);
-        if !self.glyph_cache.contains_key(&key) {
-            let (metrics, bitmap) = self.font.rasterize(ch, CHAR_H as f32);
+        for (i, &ch) in chars.iter().enumerate() {
+            let col = i % ATLAS_COLS;
+            let row = i / ATLAS_COLS;
+            atlas_map.insert(ch, (col, row));
+
+            let (metrics, bitmap) = font.rasterize(ch, CHAR_H as f32);
             let gw = metrics.width;
             let gh = metrics.height;
-            let mut pixels = vec![0u32; CHAR_W * CHAR_H];
+
             for y in 0..gh.min(CHAR_H) {
                 for x in 0..gw.min(CHAR_W) {
-                    let alpha = bitmap[y * gw + x] as f32 / 255.0;
-                    if alpha > 0.01 {
+                    let alpha = bitmap[y * gw + x];
+                    if alpha > 0 {
                         let px = (x as i32 + metrics.xmin).max(0) as usize;
                         let py = (y as i32 + CHAR_H as i32 - gh as i32 - metrics.ymin).max(0) as usize;
                         if px < CHAR_W && py < CHAR_H {
-                            pixels[py * CHAR_W + px] = Self::rgb_to_u32(
-                                (fg[0] as f32 * alpha) as u8,
-                                (fg[1] as f32 * alpha) as u8,
-                                (fg[2] as f32 * alpha) as u8,
-                            );
+                            let ax = col * CHAR_W + px;
+                            let ay = row * CHAR_H + py;
+                            atlas[ay * ATLAS_W + ax] = alpha;
                         }
                     }
                 }
             }
-            self.glyph_cache.insert(key, pixels);
         }
-        self.glyph_cache[&key].clone()
+
+        Self {
+            window,
+            width,
+            height,
+            pixels: vec![0u32; width * CHAR_W * height * CHAR_H],
+            atlas,
+            atlas_map,
+        }
     }
 
+    #[inline]
+    fn blend(fg: [u8; 3], bg: [u8; 3], alpha: u8) -> u32 {
+        if alpha == 0 {
+            return ((bg[0] as u32) << 16) | ((bg[1] as u32) << 8) | (bg[2] as u32);
+        }
+        if alpha == 255 {
+            return ((fg[0] as u32) << 16) | ((fg[1] as u32) << 8) | (fg[2] as u32);
+        }
+        let a = alpha as u32;
+        let inv = 255 - a;
+        let r = (fg[0] as u32 * a + bg[0] as u32 * inv) / 255;
+        let g = (fg[1] as u32 * a + bg[1] as u32 * inv) / 255;
+        let b = (fg[2] as u32 * a + bg[2] as u32 * inv) / 255;
+        (r << 16) | (g << 8) | b
+    }
+
+    #[inline]
     fn draw_cell(&mut self, col: usize, row: usize, ch: char, fg: [u8; 3], bg: [u8; 3]) {
-        let bg_u32 = Self::rgb_to_u32(bg[0], bg[1], bg[2]);
-        let glyph = self.get_glyph(ch, fg);
+        let (ac, ar) = match self.atlas_map.get(&ch) {
+            Some(&(c, r)) => (c, r),
+            None => return,
+        };
 
         let base_x = col * CHAR_W;
         let base_y = row * CHAR_H;
         let screen_w = self.width * CHAR_W;
-        let screen_h = self.height * CHAR_H;
 
         for y in 0..CHAR_H {
-            for x in 0..CHAR_W {
-                let px = base_x + x;
-                let py = base_y + y;
-                if px >= screen_w || py >= screen_h {
-                    continue;
-                }
-                let gp = glyph[y * CHAR_W + x];
-                if gp != 0 {
-                    self.pixels[py * screen_w + px] = gp;
-                } else {
-                    self.pixels[py * screen_w + px] = bg_u32;
-                }
+            let ay = ar * CHAR_H + y;
+            let py = base_y + y;
+            if py >= self.height * CHAR_H { break; }
+
+            let atlas_row = &self.atlas[ay * ATLAS_W + ac * CHAR_W..ay * ATLAS_W + ac * CHAR_W + CHAR_W];
+            let pixel_row = &mut self.pixels[py * screen_w + base_x..py * screen_w + base_x + CHAR_W.min(screen_w - base_x)];
+
+            for x in 0..pixel_row.len() {
+                pixel_row[x] = Self::blend(fg, bg, atlas_row[x]);
             }
         }
     }
 
     pub fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) {
         let reg = MaterialRegistry::instance();
+        let screen_w = self.width * CHAR_W;
+        let screen_h = self.height * CHAR_H;
 
-        let mut entity_map = std::collections::HashMap::new();
+        for py in (0..screen_h).step_by(CHAR_H) {
+            for px in (0..screen_w).step_by(CHAR_W) {
+                let base = py * screen_w + px;
+                let end = base + CHAR_W.min(screen_w - px);
+                for p in base..end {
+                    self.pixels[p] = 0x000A0A0F;
+                }
+            }
+        }
+
+        let mut entity_map: std::collections::HashMap<(i32, i32), (char, [u8; 3])> = std::collections::HashMap::new();
         for e in entities.all() {
             for b in &e.bodies {
                 if !b.alive { continue; }
@@ -156,7 +186,7 @@ impl WindowRenderer {
                 let cell = grid.get(wx, wy);
                 let mat = reg.get(cell.material);
                 if cell.is_empty() {
-                    self.draw_cell(dx, dy, ' ', [mat.color_fg.0, mat.color_fg.1, mat.color_fg.2], [10, 10, 15]);
+                    self.draw_cell(dx, dy, ' ', [10, 10, 15], [10, 10, 15]);
                 } else {
                     let fg = if cell.material == MaterialId::Lava {
                         let r = 200u8.saturating_add(cell.variant / 2);
@@ -170,20 +200,15 @@ impl WindowRenderer {
             }
         }
 
-        self.window.update_with_buffer(&self.pixels, self.width * CHAR_W, self.height * CHAR_H)
-            .expect("update_with_buffer failed");
+        let _ = self.window.update_with_buffer(&self.pixels, screen_w, screen_h);
     }
 
     pub fn is_open(&self) -> bool {
         self.window.is_open()
     }
 
-    pub fn get_keys(&self) -> Vec<Key> {
+    pub fn get_keys_down(&self) -> Vec<Key> {
         self.window.get_keys()
-    }
-
-    pub fn get_pressed_keys(&self) -> Vec<Key> {
-        self.window.get_keys_pressed(KeyRepeat::No)
     }
 
     pub fn width(&self) -> usize { self.width }
