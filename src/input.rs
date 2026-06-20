@@ -1,4 +1,6 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -42,15 +44,16 @@ pub enum HeldKey {
 
 struct HeldState {
     last_seen: Instant,
-    just_pressed: bool,
 }
 
-const HOLD_TIMEOUT: Duration = Duration::from_millis(80);
+const HOLD_TIMEOUT: Duration = Duration::from_millis(60);
 
 pub struct InputHandler {
     pub paint_brush: MaterialBrush,
     held: std::collections::HashMap<HeldKey, HeldState>,
     jump_pressed: bool,
+    receiver: Option<mpsc::Receiver<Event>>,
+    input_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl InputHandler {
@@ -59,7 +62,32 @@ impl InputHandler {
             paint_brush: MaterialBrush::Sand,
             held: std::collections::HashMap::new(),
             jump_pressed: false,
+            receiver: None,
+            input_thread: None,
         }
+    }
+
+    pub fn start(&mut self) {
+        let (tx, rx) = mpsc::channel::<Event>();
+        self.receiver = Some(rx);
+        self.input_thread = Some(thread::spawn(move || {
+            loop {
+                match event::read() {
+                    Ok(ev) => {
+                        if tx.send(ev).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }));
+    }
+
+    pub fn stop(&mut self) {
+        self.receiver = None;
+        self.input_thread = None;
+        self.held.clear();
     }
 
     fn key_to_held(code: KeyCode) -> Option<HeldKey> {
@@ -75,12 +103,7 @@ impl InputHandler {
     }
 
     fn mark_held(&mut self, key: HeldKey) {
-        let state = self.held.entry(key).or_insert(HeldState { last_seen: Instant::now(), just_pressed: false });
-        state.last_seen = Instant::now();
-    }
-
-    fn mark_pressed(&mut self, key: HeldKey) {
-        self.held.insert(key, HeldState { last_seen: Instant::now(), just_pressed: true });
+        self.held.insert(key, HeldState { last_seen: Instant::now() });
     }
 
     fn release(&mut self, key: HeldKey) {
@@ -91,22 +114,19 @@ impl InputHandler {
         self.held.contains_key(&key)
     }
 
-    /// Drain all pending input events, update held key state.
-    /// Returns one-shot actions (quit, paint, jump-on-press).
     pub fn update(&mut self) -> Vec<Action> {
         let mut one_shots = Vec::new();
         self.jump_pressed = false;
         let now = Instant::now();
 
-        // Expire stale held keys (no Repeat received within timeout)
         self.held.retain(|_, state| now.duration_since(state.last_seen) < HOLD_TIMEOUT);
 
-        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
-            let ev = match event::read() {
-                Ok(ev) => ev,
-                Err(_) => continue,
-            };
+        let events: Vec<Event> = match &self.receiver {
+            Some(rx) => rx.try_iter().collect(),
+            None => return one_shots,
+        };
 
+        for ev in events {
             if let Event::Key(KeyEvent { code, modifiers, kind, .. }) = ev {
                 let is_press = kind == KeyEventKind::Press;
                 let is_repeat = kind == KeyEventKind::Repeat;
@@ -117,7 +137,6 @@ impl InputHandler {
                     continue;
                 }
 
-                // Jump: only on initial press, not repeat
                 if is_press {
                     match code {
                         KeyCode::Up | KeyCode::Char('w') | KeyCode::Char(' ') => {
@@ -143,11 +162,8 @@ impl InputHandler {
                     }
                 }
 
-                // Movement keys: track held state
                 if let Some(held_key) = Self::key_to_held(code) {
-                    if is_press {
-                        self.mark_pressed(held_key);
-                    } else if is_repeat {
+                    if is_press || is_repeat {
                         self.mark_held(held_key);
                     } else if is_release {
                         self.release(held_key);
@@ -156,18 +172,12 @@ impl InputHandler {
             }
         }
 
-        // Clear just_pressed flags
-        for state in self.held.values_mut() {
-            state.just_pressed = false;
-        }
-
         one_shots
     }
 
     pub fn held_actions(&self) -> Vec<Action> {
         let mut actions = Vec::new();
 
-        // Left/Right: last pressed wins if both held
         let left = self.is_held(HeldKey::Left);
         let right = self.is_held(HeldKey::Right);
 
@@ -176,7 +186,6 @@ impl InputHandler {
         } else if right && !left {
             actions.push(Action::MoveRight);
         } else if left && right {
-            // Both held — check which was pressed more recently
             let left_time = self.held.get(&HeldKey::Left).map(|s| s.last_seen);
             let right_time = self.held.get(&HeldKey::Right).map(|s| s.last_seen);
             match (left_time, right_time) {

@@ -170,6 +170,7 @@ impl Game {
             return;
         }
         self.init_world();
+        self.input.start();
 
         self.last_time = Instant::now();
 
@@ -196,9 +197,9 @@ impl Game {
             }
 
             self.handle_input(vw, vh);
-
-            std::thread::sleep(std::time::Duration::from_millis(16));
         }
+
+        self.input.stop();
 
         if let Err(e) = renderer.shutdown() {
             eprintln!("Renderer shutdown failed: {}", e);
