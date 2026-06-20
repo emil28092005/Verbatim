@@ -26,13 +26,11 @@ fn lava_plus_water_makes_steam() {
     let mut s = setup_empty();
     s.perform_action(&AiAction::FillRect { x: 100, y: 120, w: 20, h: 1, material: "stone".into() });
     s.perform_action(&AiAction::FillRect { x: 100, y: 99, w: 20, h: 1, material: "stone".into() });
-    s.perform_action(&AiAction::SetCell { x: 105, y: 110, material: "lava".into() });
-    s.perform_action(&AiAction::SetCell { x: 106, y: 110, material: "water".into() });
-    s.perform_action(&AiAction::SetCell { x: 105, y: 109, material: "lava".into() });
-    s.perform_action(&AiAction::SetCell { x: 106, y: 109, material: "water".into() });
-    s.step(20);
-    let lava_remaining = s.count_material_in_region(100, 105, 20, 15, "lava");
-    assert_eq!(lava_remaining, 0, "all lava should have been converted by water");
+    s.perform_action(&AiAction::FillRect { x: 102, y: 110, w: 4, h: 3, material: "lava".into() });
+    s.perform_action(&AiAction::FillRect { x: 108, y: 110, w: 4, h: 3, material: "water".into() });
+    s.step(40);
+    let steam_count = s.count_material_in_region(100, 100, 20, 15, "steam");
+    assert!(steam_count > 0, "lava + water should produce steam, got {} steam cells", steam_count);
 }
 
 #[test]

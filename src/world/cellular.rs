@@ -170,7 +170,7 @@ impl CellularAutomaton {
 
     fn update_lava(&mut self, grid: &mut Grid, x: i32, y: i32) {
         let cell = grid.get(x, y);
-        if cell.temp < 800.0 {
+        if cell.temp < 400.0 {
             let mut new = cell;
             new.material = MaterialId::Stone;
             let i = grid.idx(x, y);
@@ -439,7 +439,7 @@ impl CellularAutomaton {
                 if count > 0 {
                     let avg = sum / count as f32;
                     let mut new = cell;
-                    new.temp += (avg - cell.temp) * k * 0.5;
+                    new.temp += (avg - cell.temp) * k * 0.1;
                     grid.cells[i] = new;
                 }
             }

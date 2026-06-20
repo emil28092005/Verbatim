@@ -15,10 +15,15 @@ pub struct Entity {
     pub kind: EntityKind,
     pub bodies: Vec<SubBody>,
     pub constraints: Vec<Constraint>,
+    pub rest_offsets: Vec<(f32, f32)>,
     pub alive: bool,
+    pub rigid: bool,
+    pub cx: f32,
+    pub cy: f32,
+    pub cvx: f32,
+    pub cvy: f32,
     pub health: f32,
     pub max_health: f32,
-    pub constraint_stiffness: f32,
     pub on_fire: bool,
     pub fire_timer: u32,
 }
@@ -30,50 +35,56 @@ impl Entity {
             kind,
             bodies: Vec::new(),
             constraints: Vec::new(),
+            rest_offsets: Vec::new(),
             alive: true,
+            rigid: true,
+            cx: 0.0,
+            cy: 0.0,
+            cvx: 0.0,
+            cvy: 0.0,
             health: 100.0,
             max_health: 100.0,
-            constraint_stiffness: 1.0,
             on_fire: false,
             fire_timer: 0,
         }
     }
 
     pub fn center(&self) -> (f32, f32) {
-        if self.bodies.is_empty() {
-            return (0.0, 0.0);
-        }
-        let mut sx = 0.0;
-        let mut sy = 0.0;
-        let mut n = 0;
-        for b in &self.bodies {
-            if b.alive {
-                sx += b.x;
-                sy += b.y;
-                n += 1;
+        if self.rigid {
+            (self.cx, self.cy)
+        } else if self.bodies.is_empty() {
+            (0.0, 0.0)
+        } else {
+            let mut sx = 0.0;
+            let mut sy = 0.0;
+            let mut n = 0;
+            for b in &self.bodies {
+                if b.alive {
+                    sx += b.x;
+                    sy += b.y;
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                (sx / n as f32, sy / n as f32)
+            } else {
+                (self.bodies[0].x, self.bodies[0].y)
             }
         }
-        if n > 0 {
-            (sx / n as f32, sy / n as f32)
-        } else {
-            (self.bodies[0].x, self.bodies[0].y)
-        }
-    }
-
-    pub fn head(&self) -> Option<&SubBody> {
-        self.bodies.first()
-    }
-
-    pub fn head_mut(&mut self) -> Option<&mut SubBody> {
-        self.bodies.first_mut()
     }
 
     pub fn kill(&mut self) {
         self.alive = false;
+        self.rigid = false;
         self.health = 0.0;
-        self.constraint_stiffness = 0.0;
         for c in &mut self.constraints {
             c.stiffness = 0.0;
+        }
+        let (cvx, cvy) = (self.cvx, self.cvy);
+        for b in &mut self.bodies {
+            if b.alive {
+                b.set_vel(cvx + (b.x - self.cx) * 0.3, cvy + (b.y - self.cy) * 0.3);
+            }
         }
         if self.kind == EntityKind::Player || self.kind == EntityKind::Goblin {
             self.kind = EntityKind::Corpse;
@@ -90,6 +101,11 @@ impl Entity {
     pub fn build_humanoid(&mut self, cx: f32, cy: f32) {
         self.bodies.clear();
         self.constraints.clear();
+        self.rest_offsets.clear();
+        self.cx = cx;
+        self.cy = cy;
+        self.cvx = 0.0;
+        self.cvy = 0.0;
 
         let r = 0.7;
         let mat = match self.kind {
@@ -98,66 +114,75 @@ impl Entity {
             EntityKind::Corpse => MaterialId::Flesh,
         };
 
-        // Head
-        self.bodies.push(SubBody::new(cx, cy - 3.5, r, mat));        // 0: head top
-        self.bodies.push(SubBody::new(cx - 0.8, cy - 3.0, r, mat));  // 1: head left
-        self.bodies.push(SubBody::new(cx + 0.8, cy - 3.0, r, mat));  // 2: head right
-        // Shoulders & torso
-        self.bodies.push(SubBody::new(cx - 1.8, cy - 1.8, r, mat));  // 3: left shoulder
-        self.bodies.push(SubBody::new(cx, cy - 1.8, r, mat));        // 4: center torso
-        self.bodies.push(SubBody::new(cx + 1.8, cy - 1.8, r, mat));  // 5: right shoulder
-        // Lower torso
-        self.bodies.push(SubBody::new(cx - 1.0, cy - 0.5, r, mat));  // 6: left torso
-        self.bodies.push(SubBody::new(cx + 1.0, cy - 0.5, r, mat));  // 7: right torso
-        // Arms
-        self.bodies.push(SubBody::new(cx - 3.0, cy - 1.0, r, mat));  // 8: left hand
-        self.bodies.push(SubBody::new(cx + 3.0, cy - 1.0, r, mat));  // 9: right hand
-        // Hips
-        self.bodies.push(SubBody::new(cx - 1.2, cy + 0.8, r, mat));  // 10: left hip
-        self.bodies.push(SubBody::new(cx + 1.2, cy + 0.8, r, mat));  // 11: right hip
-        // Legs
-        self.bodies.push(SubBody::new(cx - 1.2, cy + 2.2, r, mat));  // 12: left leg
-        self.bodies.push(SubBody::new(cx + 1.2, cy + 2.2, r, mat));  // 13: right leg
-        // Feet
-        self.bodies.push(SubBody::new(cx - 1.5, cy + 3.5, r, MaterialId::Bone)); // 14: left foot
-        self.bodies.push(SubBody::new(cx + 1.5, cy + 3.5, r, MaterialId::Bone)); // 15: right foot
+        let layout = [
+            (0.0,  -3.5, mat),        // 0: head top
+            (-0.8, -3.0, mat),        // 1: head left
+            (0.8,  -3.0, mat),        // 2: head right
+            (-1.8, -1.8, mat),        // 3: left shoulder
+            (0.0,  -1.8, mat),        // 4: center torso
+            (1.8,  -1.8, mat),        // 5: right shoulder
+            (-1.0, -0.5, mat),        // 6: left torso
+            (1.0,  -0.5, mat),        // 7: right torso
+            (-3.0, -1.0, mat),        // 8: left hand
+            (3.0,  -1.0, mat),        // 9: right hand
+            (-1.2,  0.8, mat),        // 10: left hip
+            (1.2,   0.8, mat),        // 11: right hip
+            (-1.2,  2.2, mat),        // 12: left leg
+            (1.2,   2.2, mat),        // 13: right leg
+            (-1.5,  3.5, MaterialId::Bone), // 14: left foot
+            (1.5,   3.5, MaterialId::Bone), // 15: right foot
+        ];
 
-        let s = self.constraint_stiffness;
-        let mk = |a: usize, b: usize, len: f32| Constraint::new(a, b, len, s);
+        for &(ox, oy, m) in &layout {
+            self.rest_offsets.push((ox, oy));
+            self.bodies.push(SubBody::new(cx + ox, cy + oy, r, m));
+        }
 
-        // Head internal
+        let mk = |a: usize, b: usize, len: f32| Constraint::new(a, b, len, 1.0);
         self.constraints.push(mk(0, 1, 0.9));
         self.constraints.push(mk(0, 2, 0.9));
         self.constraints.push(mk(1, 2, 1.6));
-        // Head to shoulders
         self.constraints.push(mk(1, 3, 1.3));
         self.constraints.push(mk(2, 5, 1.3));
-        // Shoulders to torso
         self.constraints.push(mk(3, 4, 1.8));
         self.constraints.push(mk(4, 5, 1.8));
         self.constraints.push(mk(3, 6, 1.6));
         self.constraints.push(mk(5, 7, 1.6));
-        // Torso center
         self.constraints.push(mk(4, 6, 1.3));
         self.constraints.push(mk(4, 7, 1.3));
         self.constraints.push(mk(6, 7, 2.0));
-        // Arms
         self.constraints.push(mk(3, 8, 1.5));
         self.constraints.push(mk(5, 9, 1.5));
-        // Hips
         self.constraints.push(mk(6, 10, 1.5));
         self.constraints.push(mk(7, 11, 1.5));
         self.constraints.push(mk(10, 11, 2.4));
-        // Legs
         self.constraints.push(mk(10, 12, 1.4));
         self.constraints.push(mk(11, 13, 1.4));
-        // Feet
         self.constraints.push(mk(12, 14, 1.5));
         self.constraints.push(mk(13, 15, 1.5));
-        // Cross-bracing for stability
         self.constraints.push(mk(0, 4, 1.7));
         self.constraints.push(mk(6, 10, 1.3));
         self.constraints.push(mk(7, 11, 1.3));
+    }
+
+    pub fn sync_bodies_to_center(&mut self) {
+        for (i, b) in self.bodies.iter_mut().enumerate() {
+            if !b.alive {
+                continue;
+            }
+            let (ox, oy) = self.rest_offsets[i];
+            b.x = self.cx + ox;
+            b.y = self.cy + oy;
+            b.old_x = b.x - self.cvx;
+            b.old_y = b.y - self.cvy;
+        }
+    }
+
+    pub fn move_center(&mut self, dx: f32, dy: f32) {
+        if self.rigid {
+            self.cvx += dx;
+            self.cvy += dy;
+        }
     }
 
     pub fn apply_fire_damage(&mut self) {
@@ -165,11 +190,10 @@ impl Entity {
             return;
         }
         self.fire_timer += 1;
-        let dmg = 0.5;
-        self.take_damage(dmg);
+        self.take_damage(0.5);
         for b in &mut self.bodies {
             if b.alive {
-                b.health -= dmg;
+                b.health -= 0.5;
             }
         }
         if self.fire_timer > 180 {
@@ -207,6 +231,7 @@ impl EntityManager {
             }
             EntityKind::Corpse => {
                 e.alive = false;
+                e.rigid = false;
             }
         }
         self.entities.push(e);

@@ -11,8 +11,8 @@ impl Player {
         let id = manager.spawn(EntityKind::Player);
         Self {
             entity_id: id,
-            move_speed: 0.3,
-            jump_force: 1.2,
+            move_speed: 0.25,
+            jump_force: 0.8,
         }
     }
 
@@ -24,28 +24,20 @@ impl Player {
 
     pub fn move_left(&self, manager: &mut EntityManager) {
         if let Some(e) = manager.get_mut(self.entity_id) {
-            if let Some(head) = e.head_mut() {
-                head.add_vel(-self.move_speed, 0.0);
-            }
+            e.move_center(-self.move_speed, 0.0);
         }
     }
 
     pub fn move_right(&self, manager: &mut EntityManager) {
         if let Some(e) = manager.get_mut(self.entity_id) {
-            if let Some(head) = e.head_mut() {
-                head.add_vel(self.move_speed, 0.0);
-            }
+            e.move_center(self.move_speed, 0.0);
         }
     }
 
     pub fn jump(&self, manager: &mut EntityManager, on_ground: bool) {
         if on_ground {
             if let Some(e) = manager.get_mut(self.entity_id) {
-                for b in &mut e.bodies {
-                    if b.alive {
-                        b.add_vel(0.0, -self.jump_force);
-                    }
-                }
+                e.move_center(0.0, -self.jump_force);
             }
         }
     }

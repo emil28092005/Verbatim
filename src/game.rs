@@ -191,78 +191,22 @@ impl Game {
     fn update_entities(&mut self) {
         let solver = self.verlet.clone();
         let substeps = solver.substeps;
-        let grid = &self.grid;
+        let gravity = solver.gravity;
+        let damping = solver.damping;
+        let max_vel = solver.max_vel;
 
-        let entities_data: Vec<(usize, Vec<crate::physics::verlet::SubBody>, Vec<crate::physics::verlet::Constraint>)>;
-        entities_data = {
-            let mut data = Vec::new();
-            for (i, e) in self.entities.all().iter().enumerate() {
-                data.push((i, e.bodies.clone(), e.constraints.clone()));
-            }
-            data
-        };
+        let entity_count = self.entities.all().len();
 
-        for (idx, mut bodies, constraints) in entities_data {
-            for b in &mut bodies {
-                if !b.alive {
-                    continue;
-                }
-                if b.on_fire {
-                    b.fire_timer += 1;
-                    b.health -= 0.3;
-                    if b.fire_timer > 120 {
-                        b.on_fire = false;
-                        b.fire_timer = 0;
-                    }
-                }
-            }
+        for idx in 0..entity_count {
+            let is_rigid = self.entities.all()[idx].rigid;
 
-            for _ in 0..substeps {
-                solver.integrate(&mut bodies);
-
-                for b in &mut bodies {
-                    if !b.alive {
-                        continue;
-                    }
-                    let result = resolve_grid_collision(grid, b);
-                    if result.touching_lava {
-                        b.health -= 0.5;
-                        if !b.on_fire {
-                            b.on_fire = true;
-                        }
-                    }
-                    if result.touching_fire {
-                        b.health -= 0.15;
-                        if !b.on_fire && b.health < 80.0 {
-                            b.on_fire = true;
-                        }
-                    }
-                    if result.touching_acid {
-                        b.health -= 0.25;
-                    }
-                    if result.in_liquid {
-                        let body_density = crate::world::material::MaterialRegistry::instance()
-                            .get(b.material).density;
-                        if body_density > result.liquid_density {
-                            b.y += 0.005;
-                        }
-                    }
-                }
-
-                for _ci in 0..4 {
-                    solver.solve_constraints(&mut bodies, &constraints, 1);
-                    for b in &mut bodies {
-                        if !b.alive {
-                            continue;
-                        }
-                        resolve_grid_collision(grid, b);
-                    }
-                }
+            if is_rigid {
+                self.update_rigid_entity(idx, gravity, damping, max_vel);
+            } else {
+                self.update_ragdoll_entity(idx, &solver, substeps);
             }
 
             if let Some(e) = self.entities.all_mut().get_mut(idx) {
-                e.bodies = bodies;
-
                 let mut total_health = 0.0;
                 let mut alive_count = 0;
                 for b in &e.bodies {
@@ -284,6 +228,234 @@ impl Game {
                     e.apply_fire_damage();
                 }
             }
+        }
+    }
+
+    fn update_rigid_entity(&mut self, idx: usize, gravity: f32, damping: f32, max_vel: f32) {
+        let grid = &self.grid;
+        let (cx, cy, cvx, cvy) = {
+            let e = &self.entities.all()[idx];
+            (e.cx, e.cy, e.cvx, e.cvy)
+        };
+
+        let mut new_cx = cx;
+        let mut new_cy = cy;
+        let mut new_cvx = cvx * damping;
+        let mut new_cvy = cvy * damping;
+
+        new_cvy += gravity;
+
+        let v_mag = (new_cvx * new_cvx + new_cvy * new_cvy).sqrt();
+        if v_mag > max_vel {
+            new_cvx = new_cvx / v_mag * max_vel;
+            new_cvy = new_cvy / v_mag * max_vel;
+        }
+
+        new_cx += new_cvx;
+        new_cy += new_cvy;
+
+        let offsets = self.entities.all()[idx].rest_offsets.clone();
+        let radii: Vec<f32> = self.entities.all()[idx].bodies.iter().map(|b| b.radius).collect();
+
+        for substep in 0..4 {
+            let mut total_push_x = 0.0;
+            let mut total_push_y = 0.0;
+            let mut push_count = 0;
+
+            for (i, &(ox, oy)) in offsets.iter().enumerate() {
+                let bx = new_cx + ox;
+                let by = new_cy + oy;
+                let r = radii[i];
+
+                let min_x = (bx - r).floor() as i32;
+                let max_x = (bx + r).ceil() as i32;
+                let min_y = (by - r).floor() as i32;
+                let max_y = (by + r).ceil() as i32;
+
+                for cy_cell in min_y..=max_y {
+                    for cx_cell in min_x..=max_x {
+                        if !grid.in_bounds(cx_cell, cy_cell) {
+                            continue;
+                        }
+                        let cell = grid.get(cx_cell, cy_cell);
+                        if cell.is_empty() || cell.is_liquid() {
+                            continue;
+                        }
+                        if cell.material == MaterialId::Fire {
+                            continue;
+                        }
+                        if !cell.is_solid() {
+                            continue;
+                        }
+
+                        let cell_min_x = cx_cell as f32;
+                        let cell_max_x = (cx_cell + 1) as f32;
+                        let cell_min_y = cy_cell as f32;
+                        let cell_max_y = (cy_cell + 1) as f32;
+
+                        let inside_x = bx >= cell_min_x && bx < cell_max_x;
+                        let inside_y = by >= cell_min_y && by < cell_max_y;
+
+                        if inside_x && inside_y {
+                            let dl = bx - cell_min_x;
+                            let dr = cell_max_x - bx;
+                            let dt = by - cell_min_y;
+                            let db = cell_max_y - by;
+                            let md = dl.min(dr).min(dt).min(db);
+                            if md == dt {
+                                total_push_y -= r + md;
+                                push_count += 1;
+                                if new_cvy > 0.0 { new_cvy = 0.0; }
+                            } else if md == db {
+                                total_push_y += r + md;
+                                push_count += 1;
+                                if new_cvy < 0.0 { new_cvy = 0.0; }
+                            } else if md == dl {
+                                total_push_x -= r + md;
+                                push_count += 1;
+                                if new_cvx > 0.0 { new_cvx = 0.0; }
+                            } else {
+                                total_push_x += r + md;
+                                push_count += 1;
+                                if new_cvx < 0.0 { new_cvx = 0.0; }
+                            }
+                        } else {
+                            let closest_x = bx.max(cell_min_x).min(cell_max_x);
+                            let closest_y = by.max(cell_min_y).min(cell_max_y);
+                            let dx = bx - closest_x;
+                            let dy = by - closest_y;
+                            let dist_sq = dx * dx + dy * dy;
+                            if dist_sq < r * r && dist_sq > 0.0001 {
+                                let dist = dist_sq.sqrt();
+                                let overlap = r - dist;
+                                total_push_x += dx / dist * overlap;
+                                total_push_y += dy / dist * overlap;
+                                push_count += 1;
+                                if dy < -0.5 && new_cvy > 0.0 { new_cvy = 0.0; }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if push_count > 0 {
+                let inv = 1.0 / push_count as f32;
+                let px = total_push_x * inv;
+                let py = total_push_y * inv;
+                let mag = (px * px + py * py).sqrt();
+                if mag > 0.001 {
+                    new_cx += px;
+                    new_cy += py;
+                }
+            }
+        }
+
+        let mut touching_lava = false;
+        let mut touching_fire = false;
+        let mut touching_acid = false;
+        let mut in_liquid = false;
+
+        for (i, &(ox, oy)) in offsets.iter().enumerate() {
+            let bx = (new_cx + ox) as i32;
+            let by = (new_cy + oy) as i32;
+            if !grid.in_bounds(bx, by) {
+                continue;
+            }
+            let cell = grid.get(bx, by);
+            if cell.material == MaterialId::Lava { touching_lava = true; }
+            if cell.material == MaterialId::Fire { touching_fire = true; }
+            if cell.material == MaterialId::Acid { touching_acid = true; }
+            if cell.is_liquid() { in_liquid = true; }
+        }
+
+        if let Some(e) = self.entities.all_mut().get_mut(idx) {
+            e.cx = new_cx;
+            e.cy = new_cy;
+            e.cvx = new_cvx;
+            e.cvy = new_cvy;
+            e.sync_bodies_to_center();
+
+            if touching_lava {
+                for b in &mut e.bodies {
+                    if b.alive {
+                        b.health -= 0.5;
+                        if !b.on_fire { b.on_fire = true; }
+                    }
+                }
+            }
+            if touching_fire {
+                for b in &mut e.bodies {
+                    if b.alive {
+                        b.health -= 0.15;
+                        if !b.on_fire && b.health < 80.0 { b.on_fire = true; }
+                    }
+                }
+            }
+            if touching_acid {
+                for b in &mut e.bodies {
+                    if b.alive { b.health -= 0.25; }
+                }
+            }
+            if in_liquid {
+                new_cvy *= 0.5;
+                e.cvy = new_cvy;
+            }
+        }
+    }
+
+    fn update_ragdoll_entity(&mut self, idx: usize, solver: &crate::physics::verlet::VerletSolver, substeps: u32) {
+        let grid = &self.grid;
+        let mut bodies = self.entities.all()[idx].bodies.clone();
+        let constraints = self.entities.all()[idx].constraints.clone();
+
+        for b in &mut bodies {
+            if !b.alive {
+                continue;
+            }
+            if b.on_fire {
+                b.fire_timer += 1;
+                b.health -= 0.3;
+                if b.fire_timer > 120 {
+                    b.on_fire = false;
+                    b.fire_timer = 0;
+                }
+            }
+        }
+
+        for _ in 0..substeps {
+            solver.integrate(&mut bodies);
+
+            for b in &mut bodies {
+                if !b.alive {
+                    continue;
+                }
+                let result = resolve_grid_collision(grid, b);
+                if result.touching_lava {
+                    b.health -= 0.5;
+                    if !b.on_fire { b.on_fire = true; }
+                }
+                if result.touching_fire {
+                    b.health -= 0.15;
+                    if !b.on_fire && b.health < 80.0 { b.on_fire = true; }
+                }
+                if result.touching_acid {
+                    b.health -= 0.25;
+                }
+            }
+
+            for _ci in 0..4 {
+                solver.solve_constraints(&mut bodies, &constraints, 1);
+                for b in &mut bodies {
+                    if !b.alive {
+                        continue;
+                    }
+                    resolve_grid_collision(grid, b);
+                }
+            }
+        }
+
+        if let Some(e) = self.entities.all_mut().get_mut(idx) {
+            e.bodies = bodies;
         }
     }
 
@@ -330,7 +502,7 @@ impl Game {
                 break;
             }
         }
-        let spawn_y = surface_y - 4;
+        let spawn_y = surface_y - 6;
 
         if !self.grid.in_bounds(spawn_x, spawn_y) {
             return;

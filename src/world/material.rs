@@ -122,7 +122,7 @@ impl MaterialRegistry {
                     flammable: false,
                     ignition_temp: f32::INFINITY,
                     melt_temp: f32::INFINITY,
-                    heat_conductivity: 0.5,
+                    heat_conductivity: 0.05,
                     color_fg: (255, 80, 20),
                     color_bg: (120, 20, 0),
                     display_char: '#',

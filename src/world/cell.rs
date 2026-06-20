@@ -81,7 +81,7 @@ impl Cell {
 
     pub fn new(material: MaterialId) -> Self {
         let temp = match material {
-            MaterialId::Lava => 1200.0,
+            MaterialId::Lava => 1500.0,
             MaterialId::Fire => 800.0,
             MaterialId::Steam => 150.0,
             MaterialId::Smoke => 120.0,

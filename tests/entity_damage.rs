@@ -11,10 +11,10 @@ fn setup_empty() -> GameSession {
 #[test]
 fn entity_takes_lava_damage() {
     let mut s = setup_empty();
-    s.perform_action(&AiAction::FillRect { x: 100, y: 125, w: 20, h: 1, material: "stone".into() });
-    s.perform_action(&AiAction::FillRect { x: 116, y: 123, w: 4, h: 2, material: "lava".into() });
-    s.perform_action(&AiAction::Spawn { kind: "goblin".into(), x: 118.0, y: 120.0 });
-    s.step(60);
+    s.perform_action(&AiAction::FillRect { x: 100, y: 130, w: 20, h: 3, material: "stone".into() });
+    s.perform_action(&AiAction::FillRect { x: 114, y: 127, w: 8, h: 3, material: "lava".into() });
+    s.perform_action(&AiAction::Spawn { kind: "goblin".into(), x: 118.0, y: 118.0 });
+    s.step(80);
     let entities = s.get_entities();
     let goblin = entities.into_iter().find(|e| e.kind == "Goblin");
     assert!(goblin.is_some(), "goblin should exist");
