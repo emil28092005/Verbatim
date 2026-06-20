@@ -20,27 +20,6 @@ pub enum MaterialId {
 }
 
 impl MaterialId {
-    pub const ALL: [MaterialId; 14] = [
-        MaterialId::Empty,
-        MaterialId::Sand,
-        MaterialId::Water,
-        MaterialId::Stone,
-        MaterialId::Lava,
-        MaterialId::Wood,
-        MaterialId::Flesh,
-        MaterialId::Bone,
-        MaterialId::Steam,
-        MaterialId::Fire,
-        MaterialId::Acid,
-        MaterialId::Smoke,
-        MaterialId::Grass,
-        MaterialId::Dirt,
-    ];
-
-    pub fn from_u8(v: u8) -> Self {
-        unsafe { std::mem::transmute(v) }
-    }
-
     pub fn display_char(self) -> char {
         match self {
             MaterialId::Empty => ' ',
@@ -137,10 +116,9 @@ impl Cell {
     }
 }
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
 fn rand_u8() -> u8 {
-    static mut COUNTER: u8 = 0;
-    unsafe {
-        COUNTER = COUNTER.wrapping_add(7);
-        COUNTER
-    }
+    static COUNTER: AtomicU8 = AtomicU8::new(0);
+    COUNTER.fetch_add(7, Ordering::Relaxed)
 }

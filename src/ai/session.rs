@@ -62,11 +62,6 @@ impl GameSession {
         }
     }
 
-    pub fn perform_action_and_step(&mut self, action: &AiAction, steps: u32) {
-        self.perform_action(action);
-        self.step(steps);
-    }
-
     pub fn get_state(&self) -> GameState {
         build_game_state(&self.game, self.view_width, self.view_height)
     }
@@ -146,10 +141,6 @@ impl GameSession {
         }
     }
 
-    pub fn is_recording(&self) -> bool {
-        self.recorder.is_some()
-    }
-
     pub fn save_replay(&self, path: &str) -> std::io::Result<()> {
         if let Some(ref r) = self.recorder {
             r.save(path)?;
@@ -167,10 +158,6 @@ impl GameSession {
 
     pub fn grid(&self) -> &Grid {
         &self.game.grid
-    }
-
-    pub fn grid_mut(&mut self) -> &mut Grid {
-        &mut self.game.grid
     }
 
     pub fn tick(&self) -> u64 {

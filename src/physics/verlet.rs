@@ -49,18 +49,6 @@ impl SubBody {
         self.old_x = self.x - vx;
         self.old_y = self.y - vy;
     }
-
-    #[inline]
-    pub fn add_vel(&mut self, vx: f32, vy: f32) {
-        self.old_x -= vx;
-        self.old_y -= vy;
-    }
-
-    #[inline]
-    pub fn apply_force(&mut self, fx: f32, fy: f32) {
-        self.ax += fx;
-        self.ay += fy;
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -158,15 +146,5 @@ impl VerletSolver {
                 bodies[c.b].y -= sy;
             }
         }
-    }
-
-    pub fn step(
-        &self,
-        bodies: &mut [SubBody],
-        constraints: &[Constraint],
-        iterations: u32,
-    ) {
-        self.integrate(bodies);
-        self.solve_constraints(bodies, constraints, iterations);
     }
 }

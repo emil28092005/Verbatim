@@ -66,10 +66,6 @@ impl ReplayPlayer {
         Ok(Self { recording })
     }
 
-    pub fn from_recording(recording: ReplayRecording) -> Self {
-        Self { recording }
-    }
-
     pub fn play(&self) -> GameSession {
         let mut session = GameSession::new_seeded(self.recording.seed);
         session.init();

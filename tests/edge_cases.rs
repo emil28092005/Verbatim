@@ -166,7 +166,6 @@ fn center_camera_on_player() {
     s.perform_action(&AiAction::SetCamera { x: 0, y: 0 });
     s.step(30);
     s.perform_action(&AiAction::CenterCamera);
-    let p = s.get_player().unwrap();
     assert!(s.game.cam_x > 0, "camera should move from 0 toward player: got {}", s.game.cam_x);
     assert!(s.game.cam_y > 0, "camera should move from 0 toward player: got {}", s.game.cam_y);
 }

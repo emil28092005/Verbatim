@@ -74,11 +74,4 @@ impl WindowInput {
         else if keys.contains(&KeyCode::Digit0) { self.paint = Some(0); }
         else if keys.contains(&KeyCode::KeyX) { self.paint = Some(99); }
     }
-
-    pub fn clear(&mut self) {
-        self.down_keys.clear();
-        self.left = false;
-        self.right = false;
-        self.jump = false;
-    }
 }

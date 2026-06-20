@@ -5,7 +5,6 @@ use std::sync::Arc;
 use crate::entity::{EntityManager, EntityKind};
 use crate::world::cell::MaterialId;
 use crate::world::grid::Grid;
-use crate::world::material::MaterialRegistry;
 
 const CHAR_W: u32 = 16;
 const CHAR_H: u32 = 16;
@@ -306,7 +305,6 @@ impl GraphicsRenderer {
 
     pub fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) {
         self.check_resize();
-        let reg = MaterialRegistry::instance();
 
         let mut entity_map: std::collections::HashMap<(i32, i32), [u8; 4]> = std::collections::HashMap::new();
         for e in entities.all() {
@@ -474,7 +472,6 @@ impl GraphicsRenderer {
         for &v in &self.swapchain_image_views { unsafe { self.device.destroy_image_view(v, None); } }
 
         // Recreate swapchain
-        let qf_slice = [0u32]; // placeholder, not used with EXCLUSIVE
         let sci = vk::SwapchainCreateInfoKHR::default()
             .surface(self.surface)
             .min_image_count(caps.min_image_count.max(2))

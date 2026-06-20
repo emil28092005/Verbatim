@@ -4,7 +4,6 @@ pub struct Player {
     pub entity_id: EntityId,
     pub move_speed: f32,
     pub jump_force: f32,
-    pub move_dir: i32,
 }
 
 impl Player {
@@ -14,7 +13,6 @@ impl Player {
             entity_id: id,
             move_speed: 0.5,
             jump_force: 1.5,
-            move_dir: 0,
         }
     }
 
@@ -25,21 +23,18 @@ impl Player {
     }
 
     pub fn move_left(&mut self, manager: &mut EntityManager) {
-        self.move_dir = -1;
         if let Some(e) = manager.get_mut(self.entity_id) {
             e.set_horizontal_vel(-self.move_speed);
         }
     }
 
     pub fn move_right(&mut self, manager: &mut EntityManager) {
-        self.move_dir = 1;
         if let Some(e) = manager.get_mut(self.entity_id) {
             e.set_horizontal_vel(self.move_speed);
         }
     }
 
     pub fn stop_horizontal(&mut self, manager: &mut EntityManager) {
-        self.move_dir = 0;
         if let Some(e) = manager.get_mut(self.entity_id) {
             e.set_horizontal_vel(0.0);
         }
@@ -55,10 +50,6 @@ impl Player {
 
     pub fn entity<'a>(&self, manager: &'a EntityManager) -> Option<&'a Entity> {
         manager.get(self.entity_id)
-    }
-
-    pub fn entity_mut<'a>(&self, manager: &'a mut EntityManager) -> Option<&'a mut Entity> {
-        manager.get_mut(self.entity_id)
     }
 
     pub fn center(&self, manager: &EntityManager) -> (f32, f32) {

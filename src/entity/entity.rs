@@ -174,13 +174,6 @@ impl Entity {
         }
     }
 
-    pub fn move_center(&mut self, dx: f32, dy: f32) {
-        if self.rigid {
-            self.cvx += dx;
-            self.cvy += dy;
-        }
-    }
-
     pub fn set_horizontal_vel(&mut self, vx: f32) {
         if self.rigid {
             self.cvx = vx;
@@ -260,9 +253,5 @@ impl EntityManager {
 
     pub fn all_mut(&mut self) -> &mut [Entity] {
         &mut self.entities
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
-        self.entities.iter_mut()
     }
 }

@@ -70,8 +70,6 @@ impl Game {
 
         // Water pool (left side)
         let water_x = 40;
-        let water_surface = (h as i32 - 3) - ((water_x as f32 * 0.1).sin() * 5.0) as i32;
-        let _water_surface = water_surface.max(10).min(h as i32 - 3);
         for x in water_x - 12..=water_x + 12 {
             let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
             let s = s.max(10).min(h as i32 - 3);

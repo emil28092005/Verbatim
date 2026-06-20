@@ -76,7 +76,7 @@ impl CellInfo {
     }
 }
 
-pub fn entity_info(e: &crate::entity::Entity) -> EntityInfo {
+pub fn entity_info(e: &crate::entity::entity::Entity) -> EntityInfo {
     let (px, py) = e.center();
     let bodies: Vec<SubBodyInfo> = e.bodies.iter().enumerate().map(|(i, b)| {
         let reg = MaterialRegistry::instance();

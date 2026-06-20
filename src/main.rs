@@ -5,6 +5,11 @@ use verbatim::render::window_input::WindowInput;
 use verbatim::world::cell::MaterialId;
 use verbatim::ai;
 use std::io::Write;
+use std::sync::Arc;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{EventLoop, ControlFlow};
+use winit::window::Window;
+use std::time::{Duration, Instant};
 
 #[derive(Parser, Debug)]
 #[command(name = "verbatim", about = "ASCII physics RPG - Noita meets Caves of Qud")]
@@ -23,6 +28,35 @@ struct Cli {
 
     #[arg(long)]
     replay_file: Option<String>,
+}
+
+trait GpuRenderer {
+    fn new(window: Arc<Window>) -> Result<Self, String> where Self: Sized;
+    fn render(&mut self, grid: &verbatim::world::grid::Grid, entities: &verbatim::entity::EntityManager, cam_x: i32, cam_y: i32);
+    fn grid_w(&self) -> usize;
+    fn grid_h(&self) -> usize;
+}
+
+impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
+    fn new(window: Arc<Window>) -> Result<Self, String> {
+        verbatim::render::vulkan::VulkanRenderer::new(window)
+    }
+    fn render(&mut self, grid: &verbatim::world::grid::Grid, entities: &verbatim::entity::EntityManager, cam_x: i32, cam_y: i32) {
+        verbatim::render::vulkan::VulkanRenderer::render(self, grid, entities, cam_x, cam_y)
+    }
+    fn grid_w(&self) -> usize { verbatim::render::vulkan::VulkanRenderer::grid_w(self) }
+    fn grid_h(&self) -> usize { verbatim::render::vulkan::VulkanRenderer::grid_h(self) }
+}
+
+impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
+    fn new(window: Arc<Window>) -> Result<Self, String> {
+        verbatim::render::graphics::GraphicsRenderer::new(window)
+    }
+    fn render(&mut self, grid: &verbatim::world::grid::Grid, entities: &verbatim::entity::EntityManager, cam_x: i32, cam_y: i32) {
+        verbatim::render::graphics::GraphicsRenderer::render(self, grid, entities, cam_x, cam_y)
+    }
+    fn grid_w(&self) -> usize { verbatim::render::graphics::GraphicsRenderer::grid_w(self) }
+    fn grid_h(&self) -> usize { verbatim::render::graphics::GraphicsRenderer::grid_h(self) }
 }
 
 fn main() {
@@ -46,10 +80,10 @@ fn main() {
             game.run(&mut renderer);
         }
         "ascii" => {
-            run_ascii_mode();
+            run_gpu_mode::<verbatim::render::vulkan::VulkanRenderer>("Verbatim — ASCII");
         }
         "graphics" => {
-            run_graphics_mode();
+            run_gpu_mode::<verbatim::render::graphics::GraphicsRenderer>("Verbatim — Graphics");
         }
         "pipe" => {
             ai::run_pipe_protocol();
@@ -73,6 +107,142 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn run_gpu_mode<R: GpuRenderer>(title: &str) {
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let window = event_loop.create_window(
+        Window::default_attributes()
+            .with_title(title)
+            .with_inner_size(winit::dpi::LogicalSize::new(160 * 16, 50 * 16))
+    ).expect("Failed to create window");
+    let window = Arc::new(window);
+
+    let mut renderer = match R::new(Arc::clone(&window)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Vulkan init failed: {e}");
+            eprintln!("Falling back to terminal mode...");
+            let mut renderer = TerminalRenderer::new();
+            let mut game = Game::new();
+            game.run(&mut renderer);
+            return;
+        }
+    };
+
+    let mut game = Game::new();
+    game.init_world();
+
+    let mut input = WindowInput::new();
+
+    let fixed_dt = Duration::from_millis(16);
+    let mut last_time = Instant::now();
+    let mut accumulator = Duration::ZERO;
+    let mut running = true;
+
+    event_loop.run(|event, ctrl| {
+        ctrl.set_control_flow(ControlFlow::Poll);
+
+        match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        running = false;
+                        ctrl.exit();
+                    }
+                    WindowEvent::KeyboardInput { event: key_event, .. } => {
+                        input.on_key_event(key_event.physical_key, key_event.state);
+                    }
+                    _ => {}
+                }
+            }
+            Event::AboutToWait => {
+                if !running {
+                    ctrl.exit();
+                    return;
+                }
+
+                let vw = renderer.grid_w();
+                let vh = renderer.grid_h();
+
+                let now = Instant::now();
+                let frame_time = now.duration_since(last_time);
+                last_time = now;
+                accumulator += frame_time;
+
+                let mut steps = 0;
+                while accumulator >= fixed_dt && steps < 5 {
+                    game.fixed_update();
+                    accumulator -= fixed_dt;
+                    steps += 1;
+                }
+
+                input.update();
+
+                if input.quit {
+                    running = false;
+                    ctrl.exit();
+                    return;
+                }
+
+                if input.jump {
+                    let on_ground = game.check_on_ground();
+                    game.player.jump(&mut game.entities, on_ground);
+                }
+
+                if input.left {
+                    game.player.move_left(&mut game.entities);
+                } else if input.right {
+                    game.player.move_right(&mut game.entities);
+                } else {
+                    game.player.stop_horizontal(&mut game.entities);
+                }
+
+                if input.cam_left { game.cam_x -= 3; }
+                if input.cam_right { game.cam_x += 3; }
+                if input.cam_up { game.cam_y -= 3; }
+                if input.cam_down { game.cam_y += 3; }
+
+                if let Some(brush_id) = input.paint {
+                    let mat = match brush_id {
+                        1 => MaterialId::Sand,
+                        2 => MaterialId::Water,
+                        3 => MaterialId::Stone,
+                        4 => MaterialId::Lava,
+                        5 => MaterialId::Wood,
+                        6 => MaterialId::Acid,
+                        7 => MaterialId::Grass,
+                        8 => MaterialId::Dirt,
+                        9 => MaterialId::Fire,
+                        0 => MaterialId::Flesh,
+                        99 => MaterialId::Empty,
+                        _ => MaterialId::Empty,
+                    };
+                    let cx = game.cam_x + (vw as i32 / 2);
+                    let cy = game.cam_y + (vh as i32 / 2);
+                    let r = 2;
+                    for dy in -r..=r {
+                        for dx in -r..=r {
+                            if dx * dx + dy * dy <= r * r + 1 {
+                                if mat == MaterialId::Empty {
+                                    game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
+                                } else {
+                                    game.grid.set_material(cx + dx, cy + dy, mat);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let (px, py) = game.player.center(&game.entities);
+                game.cam_x = px as i32 - (vw as i32 / 2);
+                game.cam_y = py as i32 - (vh as i32 / 2);
+
+                renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
+            }
+            _ => {}
+        }
+    }).expect("event loop error");
 }
 
 fn run_test_mode(cli: &Cli) {
@@ -201,291 +371,4 @@ fn player_info(game: &Game) -> String {
     } else {
         "None".to_string()
     }
-}
-
-
-fn run_ascii_mode() {
-    use verbatim::render::vulkan::VulkanRenderer;
-    use winit::event::{Event, WindowEvent};
-    use winit::event_loop::{EventLoop, ControlFlow};
-    use winit::window::Window;
-    use std::time::{Duration, Instant};
-    use std::sync::Arc;
-
-    let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let window = event_loop.create_window(
-        Window::default_attributes()
-            .with_title("Verbatim — ASCII")
-            .with_inner_size(winit::dpi::LogicalSize::new(160 * 16, 50 * 16))
-    ).expect("Failed to create window");
-    let window = Arc::new(window);
-
-    let mut renderer = match VulkanRenderer::new(Arc::clone(&window)) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Vulkan init failed: {e}");
-            eprintln!("Falling back to terminal mode...");
-            let mut renderer = TerminalRenderer::new();
-            let mut game = Game::new();
-            game.run(&mut renderer);
-            return;
-        }
-    };
-
-    let mut game = Game::new();
-    game.init_world();
-
-    let mut input = WindowInput::new();
-
-    let fixed_dt = Duration::from_millis(16);
-    let mut last_time = Instant::now();
-    let mut accumulator = Duration::ZERO;
-    let mut running = true;
-
-    event_loop.run(|event, ctrl| {
-        ctrl.set_control_flow(ControlFlow::Poll);
-
-        match event {
-            Event::WindowEvent { event, .. } => {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        running = false;
-                        ctrl.exit();
-                    }
-                    WindowEvent::KeyboardInput { event: key_event, .. } => {
-                        input.on_key_event(key_event.physical_key, key_event.state);
-                    }
-                    _ => {}
-                }
-            }
-            Event::AboutToWait => {
-                if !running {
-                    ctrl.exit();
-                    return;
-                }
-
-                let vw = renderer.grid_w();
-                let vh = renderer.grid_h();
-
-                let now = Instant::now();
-                let frame_time = now.duration_since(last_time);
-                last_time = now;
-                accumulator += frame_time;
-
-                let mut steps = 0;
-                while accumulator >= fixed_dt && steps < 5 {
-                    game.fixed_update();
-                    accumulator -= fixed_dt;
-                    steps += 1;
-                }
-
-                input.update();
-
-                if input.quit {
-                    running = false;
-                    ctrl.exit();
-                    return;
-                }
-
-                if input.jump {
-                    let on_ground = game.check_on_ground();
-                    game.player.jump(&mut game.entities, on_ground);
-                }
-
-                if input.left {
-                    game.player.move_left(&mut game.entities);
-                } else if input.right {
-                    game.player.move_right(&mut game.entities);
-                } else {
-                    game.player.stop_horizontal(&mut game.entities);
-                }
-
-                if input.cam_left { game.cam_x -= 3; }
-                if input.cam_right { game.cam_x += 3; }
-                if input.cam_up { game.cam_y -= 3; }
-                if input.cam_down { game.cam_y += 3; }
-
-                if let Some(brush_id) = input.paint {
-                    let mat = match brush_id {
-                        1 => MaterialId::Sand,
-                        2 => MaterialId::Water,
-                        3 => MaterialId::Stone,
-                        4 => MaterialId::Lava,
-                        5 => MaterialId::Wood,
-                        6 => MaterialId::Acid,
-                        7 => MaterialId::Grass,
-                        8 => MaterialId::Dirt,
-                        9 => MaterialId::Fire,
-                        0 => MaterialId::Flesh,
-                        99 => MaterialId::Empty,
-                        _ => MaterialId::Empty,
-                    };
-                    let cx = game.cam_x + (vw as i32 / 2);
-                    let cy = game.cam_y + (vh as i32 / 2);
-                    let r = 2;
-                    for dy in -r..=r {
-                        for dx in -r..=r {
-                            if dx * dx + dy * dy <= r * r + 1 {
-                                if mat == MaterialId::Empty {
-                                    game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
-                                } else {
-                                    game.grid.set_material(cx + dx, cy + dy, mat);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let (px, py) = game.player.center(&game.entities);
-                game.cam_x = px as i32 - (vw as i32 / 2);
-                game.cam_y = py as i32 - (vh as i32 / 2);
-
-                renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
-            }
-            _ => {}
-        }
-    }).expect("event loop error");
-}
-
-fn run_graphics_mode() {
-    use verbatim::render::graphics::GraphicsRenderer;
-    use winit::event::{Event, WindowEvent};
-    use winit::event_loop::{EventLoop, ControlFlow};
-    use winit::window::Window;
-    use std::time::{Duration, Instant};
-    use std::sync::Arc;
-
-    let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let window = event_loop.create_window(
-        Window::default_attributes()
-            .with_title("Verbatim — Graphics")
-            .with_inner_size(winit::dpi::LogicalSize::new(160 * 16, 50 * 16))
-    ).expect("Failed to create window");
-    let window = Arc::new(window);
-
-    let mut renderer = match GraphicsRenderer::new(Arc::clone(&window)) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Graphics (Vulkan) init failed: {e}");
-            eprintln!("Falling back to terminal mode...");
-            let mut renderer = TerminalRenderer::new();
-            let mut game = Game::new();
-            game.run(&mut renderer);
-            return;
-        }
-    };
-
-    let mut game = Game::new();
-    game.init_world();
-
-    let mut input = WindowInput::new();
-
-    let fixed_dt = Duration::from_millis(16);
-    let mut last_time = Instant::now();
-    let mut accumulator = Duration::ZERO;
-    let mut running = true;
-
-    event_loop.run(|event, ctrl| {
-        ctrl.set_control_flow(ControlFlow::Poll);
-
-        match event {
-            Event::WindowEvent { event, .. } => {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        running = false;
-                        ctrl.exit();
-                    }
-                    WindowEvent::KeyboardInput { event: key_event, .. } => {
-                        input.on_key_event(key_event.physical_key, key_event.state);
-                    }
-                    _ => {}
-                }
-            }
-            Event::AboutToWait => {
-                if !running {
-                    ctrl.exit();
-                    return;
-                }
-
-                let vw = renderer.grid_w();
-                let vh = renderer.grid_h();
-
-                let now = Instant::now();
-                let frame_time = now.duration_since(last_time);
-                last_time = now;
-                accumulator += frame_time;
-
-                let mut steps = 0;
-                while accumulator >= fixed_dt && steps < 5 {
-                    game.fixed_update();
-                    accumulator -= fixed_dt;
-                    steps += 1;
-                }
-
-                input.update();
-
-                if input.quit {
-                    running = false;
-                    ctrl.exit();
-                    return;
-                }
-
-                if input.jump {
-                    let on_ground = game.check_on_ground();
-                    game.player.jump(&mut game.entities, on_ground);
-                }
-
-                if input.left {
-                    game.player.move_left(&mut game.entities);
-                } else if input.right {
-                    game.player.move_right(&mut game.entities);
-                } else {
-                    game.player.stop_horizontal(&mut game.entities);
-                }
-
-                if input.cam_left { game.cam_x -= 3; }
-                if input.cam_right { game.cam_x += 3; }
-                if input.cam_up { game.cam_y -= 3; }
-                if input.cam_down { game.cam_y += 3; }
-
-                if let Some(brush_id) = input.paint {
-                    let mat = match brush_id {
-                        1 => MaterialId::Sand,
-                        2 => MaterialId::Water,
-                        3 => MaterialId::Stone,
-                        4 => MaterialId::Lava,
-                        5 => MaterialId::Wood,
-                        6 => MaterialId::Acid,
-                        7 => MaterialId::Grass,
-                        8 => MaterialId::Dirt,
-                        9 => MaterialId::Fire,
-                        0 => MaterialId::Flesh,
-                        99 => MaterialId::Empty,
-                        _ => MaterialId::Empty,
-                    };
-                    let cx = game.cam_x + (vw as i32 / 2);
-                    let cy = game.cam_y + (vh as i32 / 2);
-                    let r = 2;
-                    for dy in -r..=r {
-                        for dx in -r..=r {
-                            if dx * dx + dy * dy <= r * r + 1 {
-                                if mat == MaterialId::Empty {
-                                    game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
-                                } else {
-                                    game.grid.set_material(cx + dx, cy + dy, mat);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let (px, py) = game.player.center(&game.entities);
-                game.cam_x = px as i32 - (vw as i32 / 2);
-                game.cam_y = py as i32 - (vh as i32 / 2);
-
-                renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
-            }
-            _ => {}
-        }
-    }).expect("event loop error");
 }

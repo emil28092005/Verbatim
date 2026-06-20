@@ -19,24 +19,6 @@ pub struct Material {
 }
 
 impl Material {
-    pub const fn empty() -> Self {
-        Self {
-            id: MaterialId::Empty,
-            name: "empty",
-            density: 0.0,
-            solid: false,
-            liquid: false,
-            gas: false,
-            static_: true,
-            flammable: false,
-            ignition_temp: f32::INFINITY,
-            melt_temp: f32::INFINITY,
-            heat_conductivity: 0.0,
-            color_fg: (0, 0, 0),
-            color_bg: (0, 0, 0),
-            display_char: ' ',
-        }
-    }
 }
 
 pub struct MaterialRegistry {

@@ -36,11 +36,6 @@ fn ragdoll_falls_after_death() {
     let y_before = g.pos[1];
 
     s.perform_action(&AiAction::DamageEntity { id: g.id, amount: 100.0 });
-    s.step(1);
-    let y_death = {
-        let e = s.get_entities().into_iter().find(|e| e.id == g.id).unwrap();
-        e.pos[1]
-    };
     s.step(30);
     let y_after = {
         let e = s.get_entities().into_iter().find(|e| e.id == g.id).unwrap();

@@ -11,7 +11,6 @@ use crate::entity::EntityManager;
 use crate::render::Renderer;
 use crate::world::cell::MaterialId;
 use crate::world::grid::Grid;
-use crate::world::material::MaterialRegistry;
 
 pub struct TerminalRenderer {
     width: usize,
@@ -70,7 +69,6 @@ impl Renderer for TerminalRenderer {
             return Ok(());
         }
 
-        let reg = MaterialRegistry::instance();
         let mut out = stdout();
         let mut frame: Vec<(char, (u8, u8, u8), (u8, u8, u8))>;
         let total = self.width * self.height;
@@ -80,13 +78,12 @@ impl Renderer for TerminalRenderer {
             for dx in 0..self.width {
                 let wx = cam_x + dx as i32;
                 let wy = cam_y + dy as i32;
+                let idx = dy * self.width + dx;
                 if !grid.in_bounds(wx, wy) {
-                    let idx = dy * self.width + dx;
                     frame[idx] = ('?', (80, 80, 80), (10, 10, 15));
                     continue;
                 }
                 let cell = grid.get(wx, wy);
-                let idx = dy * self.width + dx;
                 if cell.is_empty() {
                     frame[idx] = (' ', (cell.fg[0], cell.fg[1], cell.fg[2]), (cell.bg[0], cell.bg[1], cell.bg[2]));
                 } else {

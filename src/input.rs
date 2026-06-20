@@ -14,7 +14,6 @@ pub enum Action {
     MoveCameraRight,
     Paint(MaterialBrush),
     Quit,
-    None,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -221,16 +220,6 @@ impl InputHandler {
     pub fn jump_requested(&self) -> bool {
         self.jump_pressed
     }
-
-    pub fn release_all(&mut self) {
-        self.held.clear();
-        self.jump_pressed = false;
-    }
-
-    pub fn poll(&mut self) -> Action {
-        let actions = self.update();
-        actions.into_iter().next().unwrap_or(Action::None)
-    }
 }
 
 impl MaterialBrush {
@@ -251,19 +240,4 @@ impl MaterialBrush {
         }
     }
 
-    pub fn name(&self) -> &'static str {
-        match self {
-            MaterialBrush::Sand => "Sand",
-            MaterialBrush::Water => "Water",
-            MaterialBrush::Stone => "Stone",
-            MaterialBrush::Lava => "Lava",
-            MaterialBrush::Wood => "Wood",
-            MaterialBrush::Acid => "Acid",
-            MaterialBrush::Grass => "Grass",
-            MaterialBrush::Dirt => "Dirt",
-            MaterialBrush::Fire => "Fire",
-            MaterialBrush::Flesh => "Flesh",
-            MaterialBrush::Erase => "Erase",
-        }
-    }
 }

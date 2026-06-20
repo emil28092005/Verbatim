@@ -445,9 +445,6 @@ impl CellularAutomaton {
         }
     }
 
-    pub fn tick_count(&self) -> u64 {
-        self.tick
-    }
 }
 
 const NEIGHBORS4: [(i32, i32); 4] = [(0, -1), (0, 1), (-1, 0), (1, 0)];

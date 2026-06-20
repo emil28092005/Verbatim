@@ -6,7 +6,6 @@ use std::sync::Arc;
 use crate::entity::{EntityManager, EntityKind};
 use crate::world::cell::MaterialId;
 use crate::world::grid::Grid;
-use crate::world::material::MaterialRegistry;
 
 const CHAR_W: u32 = 16;
 const CHAR_H: u32 = 16;
@@ -84,7 +83,6 @@ pub struct VulkanRenderer {
     descriptor_pool: vk::DescriptorPool,
     descriptor_set: vk::DescriptorSet,
     descriptor_set_layout: vk::DescriptorSetLayout,
-    tick_count: u64,
     window: Arc<winit::window::Window>,
 }
 
@@ -157,14 +155,12 @@ impl VulkanRenderer {
             atlas_image, atlas_memory, atlas_view, atlas_sampler, atlas_map,
             instance_buffer, instance_memory, instance_ptr, instance_count,
             descriptor_pool, descriptor_set, descriptor_set_layout,
-            tick_count: 0,
             window,
         })
     }
 
     pub fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) {
         self.check_resize();
-        let reg = MaterialRegistry::instance();
 
         let mut entity_map: std::collections::HashMap<(i32, i32), (char, [u8; 4])> = std::collections::HashMap::new();
         for e in entities.all() {
@@ -306,7 +302,6 @@ impl VulkanRenderer {
         }
 
         self.frame_index = (self.frame_index + 1) % MAX_FRAMES;
-        self.tick_count += 1;
     }
 
     pub fn grid_w(&self) -> usize { self.grid_w }
