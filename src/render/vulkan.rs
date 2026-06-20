@@ -85,6 +85,7 @@ pub struct VulkanRenderer {
     descriptor_set: vk::DescriptorSet,
     descriptor_set_layout: vk::DescriptorSetLayout,
     tick_count: u64,
+    window: Arc<winit::window::Window>,
 }
 
 impl VulkanRenderer {
@@ -157,6 +158,7 @@ impl VulkanRenderer {
             instance_buffer, instance_memory, instance_ptr, instance_count,
             descriptor_pool, descriptor_set, descriptor_set_layout,
             tick_count: 0,
+            window,
         })
     }
 
@@ -321,7 +323,12 @@ impl VulkanRenderer {
         let new_extent = if caps.current_extent.width != u32::MAX {
             caps.current_extent
         } else {
-            return;
+            // Wayland: surface extent is undefined, use window inner size
+            let inner = self.window.inner_size();
+            vk::Extent2D {
+                width: inner.width.max(1),
+                height: inner.height.max(1),
+            }
         };
 
         if new_extent.width == self.swapchain_extent.width

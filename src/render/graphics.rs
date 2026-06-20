@@ -65,7 +65,7 @@ pub struct GraphicsRenderer {
     instance_ptr: *mut ColorInstance,
     instance_count: usize,
 
-    _window: Arc<winit::window::Window>,
+    window: Arc<winit::window::Window>,
 }
 
 impl GraphicsRenderer {
@@ -300,7 +300,7 @@ impl GraphicsRenderer {
         image_available, render_finished, in_flight, frame_index: 0,
         vertex_buffer, vertex_memory, index_buffer, index_memory,
         instance_buffer, instance_memory, instance_ptr, instance_count,
-        _window: window,
+        window,
     })
 }
 
@@ -451,7 +451,12 @@ impl GraphicsRenderer {
         let new_extent = if caps.current_extent.width != u32::MAX {
             caps.current_extent
         } else {
-            return;
+            // Wayland: surface extent is undefined, use window inner size
+            let inner = self.window.inner_size();
+            vk::Extent2D {
+                width: inner.width.max(1),
+                height: inner.height.max(1),
+            }
         };
 
         if new_extent.width == self.swapchain_extent.width
