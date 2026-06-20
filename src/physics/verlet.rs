@@ -97,7 +97,7 @@ impl VerletSolver {
             gravity: 0.04,
             damping: 0.97,
             dt: 1.0,
-            max_vel: 1.0,
+            max_vel: 2.0,
             substeps: 8,
         }
     }

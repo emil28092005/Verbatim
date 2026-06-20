@@ -4,6 +4,7 @@ pub struct Player {
     pub entity_id: EntityId,
     pub move_speed: f32,
     pub jump_force: f32,
+    pub move_dir: i32,
 }
 
 impl Player {
@@ -11,8 +12,9 @@ impl Player {
         let id = manager.spawn(EntityKind::Player);
         Self {
             entity_id: id,
-            move_speed: 0.3,
+            move_speed: 0.5,
             jump_force: 1.5,
+            move_dir: 0,
         }
     }
 
@@ -22,22 +24,31 @@ impl Player {
         }
     }
 
-    pub fn move_left(&self, manager: &mut EntityManager) {
+    pub fn move_left(&mut self, manager: &mut EntityManager) {
+        self.move_dir = -1;
         if let Some(e) = manager.get_mut(self.entity_id) {
-            e.move_center(-self.move_speed, 0.0);
+            e.set_horizontal_vel(-self.move_speed);
         }
     }
 
-    pub fn move_right(&self, manager: &mut EntityManager) {
+    pub fn move_right(&mut self, manager: &mut EntityManager) {
+        self.move_dir = 1;
         if let Some(e) = manager.get_mut(self.entity_id) {
-            e.move_center(self.move_speed, 0.0);
+            e.set_horizontal_vel(self.move_speed);
+        }
+    }
+
+    pub fn stop_horizontal(&mut self, manager: &mut EntityManager) {
+        self.move_dir = 0;
+        if let Some(e) = manager.get_mut(self.entity_id) {
+            e.set_horizontal_vel(0.0);
         }
     }
 
     pub fn jump(&self, manager: &mut EntityManager, on_ground: bool) {
         if on_ground {
             if let Some(e) = manager.get_mut(self.entity_id) {
-                e.move_center(0.0, -self.jump_force);
+                e.set_vertical_vel(-self.jump_force);
             }
         }
     }

@@ -181,6 +181,18 @@ impl Entity {
         }
     }
 
+    pub fn set_horizontal_vel(&mut self, vx: f32) {
+        if self.rigid {
+            self.cvx = vx;
+        }
+    }
+
+    pub fn set_vertical_vel(&mut self, vy: f32) {
+        if self.rigid {
+            self.cvy = vy;
+        }
+    }
+
     pub fn apply_fire_damage(&mut self) {
         if !self.on_fire {
             return;

@@ -245,11 +245,21 @@ impl Game {
             self.player.jump(&mut self.entities, on_ground);
         }
 
-        // Movement: applied every tick while held
-        for action in self.input.held_actions() {
+        // Movement: applied every tick while held (vector-style, direct velocity)
+        let held = self.input.held_actions();
+        let moving_left = held.iter().any(|a| *a == Action::MoveLeft);
+        let moving_right = held.iter().any(|a| *a == Action::MoveRight);
+
+        if moving_left && !moving_right {
+            self.player.move_left(&mut self.entities);
+        } else if moving_right && !moving_left {
+            self.player.move_right(&mut self.entities);
+        } else {
+            self.player.stop_horizontal(&mut self.entities);
+        }
+
+        for action in &held {
             match action {
-                Action::MoveLeft => self.player.move_left(&mut self.entities),
-                Action::MoveRight => self.player.move_right(&mut self.entities),
                 Action::MoveCameraLeft => self.cam_x -= 2,
                 Action::MoveCameraRight => self.cam_x += 2,
                 Action::MoveCameraUp => self.cam_y -= 2,
@@ -335,7 +345,7 @@ impl Game {
         }
     }
 
-    fn update_rigid_entity(&mut self, idx: usize, gravity: f32, damping: f32, max_vel: f32) {
+    fn update_rigid_entity(&mut self, idx: usize, gravity: f32, _damping: f32, max_vel: f32) {
         let (cx, cy, cvx, cvy, half_w, half_h) = {
             let e = &self.entities.all()[idx];
             (e.cx, e.cy, e.cvx, e.cvy, e.half_w, e.half_h)
@@ -343,8 +353,10 @@ impl Game {
 
         let mut nx = cx;
         let mut ny = cy;
-        let mut nvx = cvx * damping;
-        let mut nvy = cvy * damping;
+        // Horizontal: direct velocity, no damping (vector movement)
+        let mut nvx = cvx;
+        // Vertical: gravity + light damping for natural fall
+        let mut nvy = cvy * 0.99;
         nvy += gravity;
 
         let v_mag = (nvx * nvx + nvy * nvy).sqrt();
