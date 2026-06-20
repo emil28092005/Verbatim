@@ -1,4 +1,6 @@
 pub mod terminal;
+pub mod window;
+pub mod window_input;
 
 use crate::entity::EntityManager;
 use crate::world::grid::Grid;

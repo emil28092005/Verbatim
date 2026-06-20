@@ -1,13 +1,16 @@
 use clap::Parser;
 use verbatim::game::Game;
 use verbatim::render::terminal::TerminalRenderer;
+use verbatim::render::window::WindowRenderer;
+use verbatim::render::window_input::WindowInput;
+use verbatim::world::cell::MaterialId;
 use verbatim::ai;
 use std::io::Write;
 
 #[derive(Parser, Debug)]
 #[command(name = "verbatim", about = "ASCII physics RPG - Noita meets Caves of Qud")]
 struct Cli {
-    #[arg(long, default_value = "terminal")]
+    #[arg(long, default_value = "window")]
     mode: String,
 
     #[arg(long, default_value_t = 0)]
@@ -27,6 +30,9 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.mode.as_str() {
+        "window" => {
+            run_window_mode();
+        }
         "terminal" => {
             std::panic::set_hook(Box::new(|info| {
                 let _ = crossterm::terminal::disable_raw_mode();
@@ -192,5 +198,94 @@ fn player_info(game: &Game) -> String {
         format!("{} hp={:.1}/{:.1} pos=({:.1},{:.1}) bodies={}/{} on_fire={}", kind, e.health, e.max_health, cx, cy, body_count, e.bodies.len(), on_fire)
     } else {
         "None".to_string()
+    }
+}
+
+fn run_window_mode() {
+    let mut renderer = WindowRenderer::new();
+    let mut game = Game::new();
+    game.init_world();
+
+    let mut input = WindowInput::new();
+    let vw = renderer.width();
+    let vh = renderer.height();
+
+    use std::time::{Duration, Instant};
+    let fixed_dt = Duration::from_millis(16);
+    let mut last_time = Instant::now();
+    let mut accumulator = Duration::ZERO;
+
+    while renderer.is_open() && game.running {
+        let now = Instant::now();
+        let frame_time = now.duration_since(last_time);
+        last_time = now;
+        accumulator += frame_time;
+
+        while accumulator >= fixed_dt {
+            game.fixed_update();
+            accumulator -= fixed_dt;
+        }
+
+        let keys = renderer.get_pressed_keys();
+        input.update(&keys);
+
+        if input.quit {
+            break;
+        }
+
+        if input.jump {
+            let on_ground = game.check_on_ground();
+            game.player.jump(&mut game.entities, on_ground);
+        }
+
+        if input.left {
+            game.player.move_left(&mut game.entities);
+        } else if input.right {
+            game.player.move_right(&mut game.entities);
+        } else {
+            game.player.stop_horizontal(&mut game.entities);
+        }
+
+        if input.cam_left { game.cam_x -= 3; }
+        if input.cam_right { game.cam_x += 3; }
+        if input.cam_up { game.cam_y -= 3; }
+        if input.cam_down { game.cam_y += 3; }
+
+        if let Some(brush_id) = input.paint {
+            let mat = match brush_id {
+                1 => MaterialId::Sand,
+                2 => MaterialId::Water,
+                3 => MaterialId::Stone,
+                4 => MaterialId::Lava,
+                5 => MaterialId::Wood,
+                6 => MaterialId::Acid,
+                7 => MaterialId::Grass,
+                8 => MaterialId::Dirt,
+                9 => MaterialId::Fire,
+                0 => MaterialId::Flesh,
+                99 => MaterialId::Empty,
+                _ => continue,
+            };
+            let cx = game.cam_x + (vw as i32 / 2);
+            let cy = game.cam_y + (vh as i32 / 2);
+            let r = 2;
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    if dx * dx + dy * dy <= r * r + 1 {
+                        if mat == MaterialId::Empty {
+                            game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
+                        } else {
+                            game.grid.set_material(cx + dx, cy + dy, mat);
+                        }
+                    }
+                }
+            }
+        }
+
+        let (px, py) = game.player.center(&game.entities);
+        game.cam_x = px as i32 - (vw as i32 / 2);
+        game.cam_y = py as i32 - (vh as i32 / 2);
+
+        renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
     }
 }
