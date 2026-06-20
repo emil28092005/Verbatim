@@ -79,7 +79,7 @@ impl Game {
                 break;
             }
         }
-        let cy = (surface_y as f32) - 6.0;
+        let cy = (surface_y as f32) - 3.0;
         self.player.spawn_at(&mut self.entities, cx, cy);
 
         let (px, py) = self.player.center(&self.entities);
@@ -502,7 +502,7 @@ impl Game {
                 break;
             }
         }
-        let spawn_y = surface_y - 6;
+        let spawn_y = surface_y - 3;
 
         if !self.grid.in_bounds(spawn_x, spawn_y) {
             return;
