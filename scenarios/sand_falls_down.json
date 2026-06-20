@@ -1,0 +1,15 @@
+{
+  "name": "sand_falls_down",
+  "description": "Sand placed in empty space should fall due to gravity",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 110, "w": 10, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 105, "material": "sand"}
+  ],
+  "steps": 10,
+  "assertions": [
+    {"type": "cell_is", "x": 105, "y": 109, "material": "sand"},
+    {"type": "cell_is_not", "x": 105, "y": 105, "material": "sand"}
+  ]
+}

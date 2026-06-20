@@ -1,0 +1,15 @@
+{
+  "name": "fire_spreads_through_grass",
+  "description": "Fire should spread through a line of grass",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 115, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 100, "y": 114, "w": 10, "h": 1, "material": "grass"},
+    {"type": "set_cell", "x": 100, "y": 114, "material": "fire"}
+  ],
+  "steps": 30,
+  "assertions": [
+    {"type": "no_material_in_region", "x": 100, "y": 113, "w": 10, "h": 2, "material": "grass"}
+  ]
+}

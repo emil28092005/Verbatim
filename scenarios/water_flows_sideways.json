@@ -1,0 +1,15 @@
+{
+  "name": "water_flows_sideways",
+  "description": "Water on a flat surface should spread horizontally",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 110, "w": 20, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 108, "material": "water"},
+    {"type": "set_cell", "x": 105, "y": 109, "material": "water"}
+  ],
+  "steps": 30,
+  "assertions": [
+    {"type": "material_count_in_region", "x": 110, "y": 108, "w": 5, "h": 3, "material": "water", "min": 1, "max": 10}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "lava_plus_water_makes_steam",
+  "description": "Lava and water adjacent should produce steam and stone",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 115, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 100, "y": 100, "w": 20, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 110, "material": "lava"},
+    {"type": "set_cell", "x": 106, "y": 110, "material": "water"}
+  ],
+  "steps": 15,
+  "assertions": [
+    {"type": "no_material_in_region", "x": 100, "y": 105, "w": 20, "h": 10, "material": "lava"}
+  ]
+}

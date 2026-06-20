@@ -1,45 +1,116 @@
-mod world;
-mod physics;
-mod entity;
-mod render;
-mod input;
-mod game;
-
 use clap::Parser;
-use game::Game;
-use render::terminal::TerminalRenderer;
+use verbatim::game::Game;
+use verbatim::render::terminal::TerminalRenderer;
+use verbatim::ai;
 use std::io::Write;
 
 #[derive(Parser, Debug)]
 #[command(name = "verbatim", about = "ASCII physics RPG - Noita meets Caves of Qud")]
 struct Cli {
     #[arg(long, default_value = "terminal")]
-    render_mode: String,
+    mode: String,
 
     #[arg(long, default_value_t = 0)]
     headless_ticks: u32,
+
+    #[arg(long, default_value = "scenarios")]
+    scenario_dir: String,
+
+    #[arg(long)]
+    scenario: Option<String>,
+
+    #[arg(long)]
+    replay_file: Option<String>,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    if cli.headless_ticks > 0 {
-        run_headless(cli.headless_ticks);
-        return;
-    }
-
-    match cli.render_mode.as_str() {
+    match cli.mode.as_str() {
         "terminal" => {
             let mut renderer = TerminalRenderer::new();
             let mut game = Game::new();
             game.run(&mut renderer);
         }
-        "vulkan" => {
-            eprintln!("Vulkan renderer not yet implemented. Use --render-mode terminal.");
-            std::process::exit(1);
+        "pipe" => {
+            ai::run_pipe_protocol();
+        }
+        "test" => {
+            run_test_mode(&cli);
+        }
+        "replay" => {
+            run_replay_mode(&cli);
+        }
+        "headless" => {
+            if cli.headless_ticks > 0 {
+                run_headless(cli.headless_ticks);
+            } else {
+                eprintln!("Use --headless-ticks N with --mode headless");
+                std::process::exit(1);
+            }
         }
         _ => {
-            eprintln!("Unknown render mode: {}. Use 'terminal' or 'vulkan'.", cli.render_mode);
+            eprintln!("Unknown mode: {}. Use terminal, pipe, test, replay, or headless.", cli.mode);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_test_mode(cli: &Cli) {
+    if let Some(path) = &cli.scenario {
+        match ai::load_scenario(path) {
+            Ok(scenario) => {
+                let result = ai::run_scenario(&scenario);
+                let report = ai::format_results(&[result.clone()]);
+                println!("{}", report);
+                if !result.passed {
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error loading scenario: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        let results = ai::run_all_scenarios(&cli.scenario_dir);
+        if results.is_empty() {
+            eprintln!("No scenarios found in {}", cli.scenario_dir);
+            std::process::exit(1);
+        }
+        let report = ai::format_results(&results);
+        println!("{}", report);
+        let any_failed = results.iter().any(|r| !r.passed);
+        if any_failed {
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_replay_mode(cli: &Cli) {
+    let path = match &cli.replay_file {
+        Some(p) => p,
+        None => {
+            eprintln!("Use --replay-file PATH with --mode replay");
+            std::process::exit(1);
+        }
+    };
+
+    match ai::ReplayPlayer::load(path) {
+        Ok(player) => {
+            let session = player.play();
+            let state = session.get_state();
+            println!("=== Replay: {} events ===", player.recording().events.len());
+            println!("Final tick: {}", state.tick);
+            if let Some(ref p) = state.player {
+                println!("Player: {} hp={:.1}/{:.1} pos=({:.1},{:.1}) alive={}",
+                    p.kind, p.health, p.max_health, p.pos[0], p.pos[1], p.alive);
+            }
+            println!("Entities: {}", state.entities.len());
+            println!("\nFinal view:\n{}", state.view);
+        }
+        Err(e) => {
+            eprintln!("Error loading replay: {}", e);
             std::process::exit(1);
         }
     }
@@ -81,7 +152,7 @@ fn run_headless(ticks: u32) {
 
             let alive: Vec<_> = game.entities.all().iter()
                 .filter(|e| e.alive)
-                .map(|e| format!("{}(hp={:.0}, pos={:?})", entity_kind_name(e.kind), e.health, e.center()))
+                .map(|e| format!("{}(hp={:.0}, pos={:?})", ai::entity_kind_name(e.kind), e.health, e.center()))
                 .collect();
             log.push_str(&format!("Alive entities: {}\n\n", alive.join(", ")));
         }
@@ -92,56 +163,13 @@ fn run_headless(ticks: u32) {
     eprintln!("Headless run complete: {} ticks, dump written to headless_dump.txt", ticks);
 }
 
-fn dump_view(grid: &world::grid::Grid, entities: &entity::EntityManager, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
-    let mut buf = String::with_capacity(vw * vh + vh + 100);
-    buf.push_str(&format!("  Camera ({}, {}):\n", cam_x, cam_y));
-
-    let mut entity_map = std::collections::HashMap::new();
-    for e in entities.all() {
-        for b in &e.bodies {
-            if !b.alive { continue; }
-            let sx = b.x as i32 - cam_x;
-            let sy = b.y as i32 - cam_y;
-            if sx >= 0 && sx < vw as i32 && sy >= 0 && sy < vh as i32 {
-                let ch = match e.kind {
-                    entity::EntityKind::Player if e.alive => '@',
-                    entity::EntityKind::Goblin if e.alive => 'g',
-                    _ => '%',
-                };
-                entity_map.insert((sx, sy), ch);
-            }
-        }
-    }
-
-    for dy in 0..vh {
-        let y = cam_y + dy as i32;
-        if dy == 0 {
-            buf.push_str("  ");
-            for dx in 0..vw {
-                let x = cam_x + dx as i32;
-                if x % 10 == 0 {
-                    buf.push_str(&format!("{}", (x / 10) % 10));
-                } else {
-                    buf.push(' ');
-                }
-            }
-            buf.push('\n');
-        }
-        buf.push_str(&format!("{:2}", y % 100));
-        for dx in 0..vw {
-            let x = cam_x + dx as i32;
-            if let Some(&ch) = entity_map.get(&(dx as i32, dy as i32)) {
-                buf.push(ch);
-            } else if !grid.in_bounds(x, y) {
-                buf.push('?');
-            } else {
-                let cell = grid.get(x, y);
-                buf.push(cell.material.display_char());
-            }
-        }
-        buf.push('\n');
-    }
-    buf
+fn dump_view(grid: &verbatim::world::grid::Grid, entities: &verbatim::entity::EntityManager, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+    ai::render_view(grid, entities, cam_x, cam_y, vw, vh)
+        .lines()
+        .enumerate()
+        .map(|(i, line)| format!("{:2}{}", (cam_y + i as i32) % 100, line))
+        .collect::<Vec<_>>()
+        .join("\n") + "\n"
 }
 
 fn player_info(game: &Game) -> String {
@@ -149,17 +177,9 @@ fn player_info(game: &Game) -> String {
         let (cx, cy) = e.center();
         let body_count = e.bodies.iter().filter(|b| b.alive).count();
         let on_fire = e.on_fire;
-        let kind = entity_kind_name(e.kind);
+        let kind = ai::entity_kind_name(e.kind);
         format!("{} hp={:.1}/{:.1} pos=({:.1},{:.1}) bodies={}/{} on_fire={}", kind, e.health, e.max_health, cx, cy, body_count, e.bodies.len(), on_fire)
     } else {
         "None".to_string()
-    }
-}
-
-fn entity_kind_name(kind: entity::EntityKind) -> &'static str {
-    match kind {
-        entity::EntityKind::Player => "Player",
-        entity::EntityKind::Goblin => "Goblin",
-        entity::EntityKind::Corpse => "Corpse",
     }
 }

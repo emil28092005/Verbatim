@@ -86,7 +86,7 @@ impl Game {
         self.center_camera_on(px, py);
     }
 
-    fn center_camera_on(&mut self, px: f32, py: f32) {
+    pub fn center_camera_on(&mut self, px: f32, py: f32) {
         self.cam_x = px as i32 - 40;
         self.cam_y = py as i32 - 12;
     }
@@ -119,7 +119,7 @@ impl Game {
         let _ = renderer.shutdown();
     }
 
-    fn handle_input(&mut self, vw: usize, vh: usize) {
+    pub fn handle_input(&mut self, vw: usize, vh: usize) {
         let action = self.input.poll();
         match action {
             Action::Quit => self.running = false,
@@ -154,7 +154,7 @@ impl Game {
         }
     }
 
-    fn check_on_ground(&self) -> bool {
+    pub fn check_on_ground(&self) -> bool {
         if let Some(e) = self.player.entity(&self.entities) {
             for b in &e.bodies {
                 if !b.alive {
@@ -247,6 +247,13 @@ impl Game {
                 }
 
                 solver.solve_constraints(&mut bodies, &constraints, 2);
+
+                for b in &mut bodies {
+                    if !b.alive {
+                        continue;
+                    }
+                    resolve_grid_collision(grid, b);
+                }
             }
 
             if let Some(e) = self.entities.all_mut().get_mut(idx) {

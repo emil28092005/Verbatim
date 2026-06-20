@@ -1,0 +1,18 @@
+{
+  "name": "acid_dissolves_wood",
+  "description": "Acid should dissolve wood but not stone",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 115, "w": 20, "h": 3, "material": "stone"},
+    {"type": "fill_rect", "x": 103, "y": 112, "w": 5, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 111, "material": "wood"},
+    {"type": "set_cell", "x": 104, "y": 111, "material": "acid"},
+    {"type": "set_cell", "x": 106, "y": 111, "material": "acid"},
+    {"type": "set_cell", "x": 105, "y": 110, "material": "acid"}
+  ],
+  "steps": 30,
+  "assertions": [
+    {"type": "no_material_in_region", "x": 103, "y": 109, "w": 5, "h": 4, "material": "wood"}
+  ]
+}

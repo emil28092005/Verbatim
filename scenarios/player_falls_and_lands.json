@@ -1,0 +1,15 @@
+{
+  "name": "player_falls_and_lands",
+  "description": "Player spawned above ground should fall and land on solid surface",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 120, "y": 130, "w": 10, "h": 1, "material": "stone"},
+    {"type": "spawn", "kind": "player", "x": 125, "y": 120}
+  ],
+  "steps": 60,
+  "assertions": [
+    {"type": "player_alive"},
+    {"type": "player_on_ground"}
+  ]
+}
