@@ -206,21 +206,11 @@ impl Game {
     }
 
     pub fn handle_input(&mut self, vw: usize, vh: usize) {
-        let action = self.input.poll();
-        match action {
+        let one_shot = self.input.update();
+        match one_shot {
             Action::Quit => {
                 self.running = false;
             }
-            Action::MoveLeft => self.player.move_left(&mut self.entities),
-            Action::MoveRight => self.player.move_right(&mut self.entities),
-            Action::Jump => {
-                let on_ground = self.check_on_ground();
-                self.player.jump(&mut self.entities, on_ground);
-            }
-            Action::MoveCameraLeft => self.cam_x -= 5,
-            Action::MoveCameraRight => self.cam_x += 5,
-            Action::MoveCameraUp => self.cam_y -= 5,
-            Action::MoveCameraDown => self.cam_y += 5,
             Action::Paint(brush) => {
                 let mat = brush.to_material();
                 let cx = self.cam_x + (vw as i32 / 2);
@@ -238,7 +228,28 @@ impl Game {
                     }
                 }
             }
-            Action::None => {}
+            _ => {}
+        }
+
+        if !self.running {
+            return;
+        }
+
+        for action in self.input.held_actions() {
+            match action {
+                Action::Quit => self.running = false,
+                Action::MoveLeft => self.player.move_left(&mut self.entities),
+                Action::MoveRight => self.player.move_right(&mut self.entities),
+                Action::Jump => {
+                    let on_ground = self.check_on_ground();
+                    self.player.jump(&mut self.entities, on_ground);
+                }
+                Action::MoveCameraLeft => self.cam_x -= 2,
+                Action::MoveCameraRight => self.cam_x += 2,
+                Action::MoveCameraUp => self.cam_y -= 2,
+                Action::MoveCameraDown => self.cam_y += 2,
+                _ => {}
+            }
         }
     }
 

@@ -1,6 +1,7 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
     MoveLeft,
     MoveRight,
@@ -14,6 +15,7 @@ pub enum Action {
     None,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MaterialBrush {
     Sand,
     Water,
@@ -28,51 +30,140 @@ pub enum MaterialBrush {
     Erase,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum HeldKey {
+    Left,
+    Right,
+    Jump,
+    CamLeft,
+    CamRight,
+    CamUp,
+    CamDown,
+}
+
 pub struct InputHandler {
     pub paint_brush: MaterialBrush,
+    held: Vec<HeldKey>,
 }
 
 impl InputHandler {
     pub fn new() -> Self {
         Self {
             paint_brush: MaterialBrush::Sand,
+            held: Vec::new(),
         }
     }
 
-    pub fn poll(&mut self) -> Action {
-        if !event::poll(Duration::from_millis(0)).unwrap_or(false) {
-            return Action::None;
+    fn key_to_held(code: KeyCode) -> Option<HeldKey> {
+        match code {
+            KeyCode::Left | KeyCode::Char('a') => Some(HeldKey::Left),
+            KeyCode::Right | KeyCode::Char('d') => Some(HeldKey::Right),
+            KeyCode::Up | KeyCode::Char('w') | KeyCode::Char(' ') => Some(HeldKey::Jump),
+            KeyCode::Char('h') => Some(HeldKey::CamLeft),
+            KeyCode::Char('l') => Some(HeldKey::CamRight),
+            KeyCode::Char('k') => Some(HeldKey::CamUp),
+            KeyCode::Char('j') => Some(HeldKey::CamDown),
+            _ => None,
         }
-        match event::read() {
-            Ok(Event::Key(KeyEvent { code, modifiers, .. })) => {
+    }
+
+    fn hold(&mut self, key: HeldKey) {
+        if !self.held.contains(&key) {
+            self.held.push(key);
+        }
+    }
+
+    fn release(&mut self, key: HeldKey) {
+        self.held.retain(|&k| k != key);
+    }
+
+    pub fn is_held(&self, key: HeldKey) -> bool {
+        self.held.contains(&key)
+    }
+
+    /// Drain all pending input events, update held key state,
+    /// and return one-shot actions (quit, paint, etc).
+    pub fn update(&mut self) -> Action {
+        let mut one_shot = Action::None;
+
+        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
+            let ev = match event::read() {
+                Ok(ev) => ev,
+                Err(_) => continue,
+            };
+
+            if let Event::Key(KeyEvent { code, modifiers, kind, .. }) = ev {
+                let is_press = kind == KeyEventKind::Press || kind == KeyEventKind::Repeat;
+                let is_release = kind == KeyEventKind::Release;
+
                 if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('c') {
                     return Action::Quit;
                 }
-                match code {
-                    KeyCode::Char('q') => Action::Quit,
-                    KeyCode::Left | KeyCode::Char('a') => Action::MoveLeft,
-                    KeyCode::Right | KeyCode::Char('d') => Action::MoveRight,
-                    KeyCode::Up | KeyCode::Char('w') | KeyCode::Char(' ') => Action::Jump,
-                    KeyCode::Char('h') => Action::MoveCameraLeft,
-                    KeyCode::Char('l') => Action::MoveCameraRight,
-                    KeyCode::Char('k') => Action::MoveCameraUp,
-                    KeyCode::Char('j') => Action::MoveCameraDown,
-                    KeyCode::Char('1') => { self.paint_brush = MaterialBrush::Sand; Action::Paint(MaterialBrush::Sand) }
-                    KeyCode::Char('2') => { self.paint_brush = MaterialBrush::Water; Action::Paint(MaterialBrush::Water) }
-                    KeyCode::Char('3') => { self.paint_brush = MaterialBrush::Stone; Action::Paint(MaterialBrush::Stone) }
-                    KeyCode::Char('4') => { self.paint_brush = MaterialBrush::Lava; Action::Paint(MaterialBrush::Lava) }
-                    KeyCode::Char('5') => { self.paint_brush = MaterialBrush::Wood; Action::Paint(MaterialBrush::Wood) }
-                    KeyCode::Char('6') => { self.paint_brush = MaterialBrush::Acid; Action::Paint(MaterialBrush::Acid) }
-                    KeyCode::Char('7') => { self.paint_brush = MaterialBrush::Grass; Action::Paint(MaterialBrush::Grass) }
-                    KeyCode::Char('8') => { self.paint_brush = MaterialBrush::Dirt; Action::Paint(MaterialBrush::Dirt) }
-                    KeyCode::Char('9') => { self.paint_brush = MaterialBrush::Fire; Action::Paint(MaterialBrush::Fire) }
-                    KeyCode::Char('0') => { self.paint_brush = MaterialBrush::Flesh; Action::Paint(MaterialBrush::Flesh) }
-                    KeyCode::Char('x') => { self.paint_brush = MaterialBrush::Erase; Action::Paint(MaterialBrush::Erase) }
-                    _ => Action::None,
+
+                if let Some(held_key) = Self::key_to_held(code) {
+                    if is_press {
+                        self.hold(held_key);
+                    } else if is_release {
+                        self.release(held_key);
+                    }
+                    continue;
+                }
+
+                if is_press {
+                    match code {
+                        KeyCode::Char('q') => return Action::Quit,
+                        KeyCode::Char('1') => { self.paint_brush = MaterialBrush::Sand; one_shot = Action::Paint(MaterialBrush::Sand); }
+                        KeyCode::Char('2') => { self.paint_brush = MaterialBrush::Water; one_shot = Action::Paint(MaterialBrush::Water); }
+                        KeyCode::Char('3') => { self.paint_brush = MaterialBrush::Stone; one_shot = Action::Paint(MaterialBrush::Stone); }
+                        KeyCode::Char('4') => { self.paint_brush = MaterialBrush::Lava; one_shot = Action::Paint(MaterialBrush::Lava); }
+                        KeyCode::Char('5') => { self.paint_brush = MaterialBrush::Wood; one_shot = Action::Paint(MaterialBrush::Wood); }
+                        KeyCode::Char('6') => { self.paint_brush = MaterialBrush::Acid; one_shot = Action::Paint(MaterialBrush::Acid); }
+                        KeyCode::Char('7') => { self.paint_brush = MaterialBrush::Grass; one_shot = Action::Paint(MaterialBrush::Grass); }
+                        KeyCode::Char('8') => { self.paint_brush = MaterialBrush::Dirt; one_shot = Action::Paint(MaterialBrush::Dirt); }
+                        KeyCode::Char('9') => { self.paint_brush = MaterialBrush::Fire; one_shot = Action::Paint(MaterialBrush::Fire); }
+                        KeyCode::Char('0') => { self.paint_brush = MaterialBrush::Flesh; one_shot = Action::Paint(MaterialBrush::Flesh); }
+                        KeyCode::Char('x') => { self.paint_brush = MaterialBrush::Erase; one_shot = Action::Paint(MaterialBrush::Erase); }
+                        _ => {}
+                    }
                 }
             }
-            _ => Action::None,
         }
+
+        one_shot
+    }
+
+    pub fn held_actions(&self) -> Vec<Action> {
+        let mut actions = Vec::new();
+        if self.is_held(HeldKey::Left) {
+            actions.push(Action::MoveLeft);
+        }
+        if self.is_held(HeldKey::Right) {
+            actions.push(Action::MoveRight);
+        }
+        if self.is_held(HeldKey::Jump) {
+            actions.push(Action::Jump);
+        }
+        if self.is_held(HeldKey::CamLeft) {
+            actions.push(Action::MoveCameraLeft);
+        }
+        if self.is_held(HeldKey::CamRight) {
+            actions.push(Action::MoveCameraRight);
+        }
+        if self.is_held(HeldKey::CamUp) {
+            actions.push(Action::MoveCameraUp);
+        }
+        if self.is_held(HeldKey::CamDown) {
+            actions.push(Action::MoveCameraDown);
+        }
+        actions
+    }
+
+    pub fn release_all(&mut self) {
+        self.held.clear();
+    }
+
+    pub fn poll(&mut self) -> Action {
+        self.update()
     }
 }
 
