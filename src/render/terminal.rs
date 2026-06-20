@@ -95,8 +95,8 @@ impl Renderer for TerminalRenderer {
                         mat.display_char
                     };
                     let fg = if cell.material == MaterialId::Lava {
-                        let flicker = cell.variant as u8;
-                        let r = 255u8.min(200 + flicker / 2);
+                        let flicker = cell.variant;
+                        let r = 200u8.saturating_add(flicker / 2);
                         (r, 60, 20)
                     } else {
                         mat.color_fg
