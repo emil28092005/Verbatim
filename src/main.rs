@@ -28,6 +28,17 @@ fn main() {
 
     match cli.mode.as_str() {
         "terminal" => {
+            std::panic::set_hook(Box::new(|info| {
+                let _ = crossterm::terminal::disable_raw_mode();
+                let _ = crossterm::execute!(
+                    std::io::stdout(),
+                    crossterm::style::ResetColor,
+                    crossterm::cursor::Show,
+                    crossterm::terminal::LeaveAlternateScreen,
+                    crossterm::event::DisableMouseCapture,
+                );
+                eprintln!("PANIC: {}", info);
+            }));
             let mut renderer = TerminalRenderer::new();
             let mut game = Game::new();
             game.run(&mut renderer);

@@ -196,6 +196,8 @@ impl Game {
             }
 
             self.handle_input(vw, vh);
+
+            std::thread::sleep(std::time::Duration::from_millis(16));
         }
 
         if let Err(e) = renderer.shutdown() {
@@ -206,7 +208,9 @@ impl Game {
     pub fn handle_input(&mut self, vw: usize, vh: usize) {
         let action = self.input.poll();
         match action {
-            Action::Quit => self.running = false,
+            Action::Quit => {
+                self.running = false;
+            }
             Action::MoveLeft => self.player.move_left(&mut self.entities),
             Action::MoveRight => self.player.move_right(&mut self.entities),
             Action::Jump => {
