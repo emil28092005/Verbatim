@@ -1,7 +1,7 @@
 use std::io::{self, Write, stdout};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PushKeyboardEnhancementFlags, PopKeyboardEnhancementFlags},
     execute, queue,
     style::{Color, SetBackgroundColor, SetForegroundColor, ResetColor, Print},
     terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, size as term_size},
@@ -53,6 +53,10 @@ impl Renderer for TerminalRenderer {
             stdout(),
             EnterAlternateScreen,
             Hide,
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            ),
             EnableMouseCapture,
             Clear(ClearType::All),
         )?;
@@ -169,6 +173,7 @@ impl Renderer for TerminalRenderer {
             stdout(),
             ResetColor,
             Show,
+            PopKeyboardEnhancementFlags,
             LeaveAlternateScreen,
             DisableMouseCapture,
         )?;

@@ -44,11 +44,10 @@ pub enum HeldKey {
 
 struct HeldState {
     last_seen: Instant,
-    seen_repeat: bool,
+    got_release: bool,
 }
 
-const HOLD_TIMEOUT_PRESS: Duration = Duration::from_millis(400);
-const HOLD_TIMEOUT_REPEAT: Duration = Duration::from_millis(80);
+const FALLBACK_TIMEOUT: Duration = Duration::from_millis(150);
 
 pub struct InputHandler {
     pub paint_brush: MaterialBrush,
@@ -104,13 +103,6 @@ impl InputHandler {
         }
     }
 
-    fn mark_held(&mut self, key: HeldKey, is_repeat: bool) {
-        self.held.insert(key, HeldState {
-            last_seen: Instant::now(),
-            seen_repeat: is_repeat,
-        });
-    }
-
     fn release(&mut self, key: HeldKey) {
         self.held.remove(&key);
     }
@@ -123,11 +115,6 @@ impl InputHandler {
         let mut one_shots = Vec::new();
         self.jump_pressed = false;
         let now = Instant::now();
-
-        self.held.retain(|_, state| {
-            let timeout = if state.seen_repeat { HOLD_TIMEOUT_REPEAT } else { HOLD_TIMEOUT_PRESS };
-            now.duration_since(state.last_seen) < timeout
-        });
 
         let events: Vec<Event> = match &self.receiver {
             Some(rx) => rx.try_iter().collect(),
@@ -171,16 +158,29 @@ impl InputHandler {
                 }
 
                 if let Some(held_key) = Self::key_to_held(code) {
-                    if is_press {
-                        self.mark_held(held_key, false);
-                    } else if is_repeat {
-                        self.mark_held(held_key, true);
+                    if is_press || is_repeat {
+                        let prev_got_release = self.held.get(&held_key).map(|s| s.got_release).unwrap_or(false);
+                        self.held.insert(held_key, HeldState {
+                            last_seen: Instant::now(),
+                            got_release: prev_got_release,
+                        });
                     } else if is_release {
                         self.release(held_key);
+                        for state in self.held.values_mut() {
+                            state.got_release = true;
+                        }
                     }
                 }
             }
         }
+
+        self.held.retain(|_, state| {
+            if state.got_release {
+                true
+            } else {
+                now.duration_since(state.last_seen) < FALLBACK_TIMEOUT
+            }
+        });
 
         one_shots
     }
