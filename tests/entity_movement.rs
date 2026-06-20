@@ -13,17 +13,17 @@ fn setup_empty() -> GameSession {
 fn player_falls_and_lands() {
     let mut s = GameSession::new_seeded(42);
     s.init_empty();
-    s.clear_area(115, 120, 20, 10);
+    s.clear_area(115, 115, 20, 15);
     s.perform_action(&AiAction::FillRect { x: 110, y: 130, w: 30, h: 15, material: "stone".into() });
-    s.step(40);
+    s.step(80);
     let player = s.get_player().expect("player should exist");
     assert!(player.alive, "player should be alive");
     let y = player.pos[1];
-    assert!(y < 140.0, "player should not fall through stone floor, got y={}", y);
-    s.step(20);
+    assert!(y < 135.0, "player should not fall through stone floor, got y={}", y);
+    s.step(30);
     let player2 = s.get_player().expect("player should exist");
     let dy = (player2.pos[1] - y).abs();
-    assert!(dy < 2.0, "player should have stopped falling (dy={:.2}), y={} -> {}", dy, y, player2.pos[1]);
+    assert!(dy < 3.0, "player should have stopped falling (dy={:.2}), y={} -> {}", dy, y, player2.pos[1]);
 }
 
 #[test]

@@ -68,6 +68,79 @@ impl Game {
             }
         }
 
+        // Water pool (left side)
+        let water_x = 40;
+        let water_surface = (h as i32 - 3) - ((water_x as f32 * 0.1).sin() * 5.0) as i32;
+        let water_surface = water_surface.max(10).min(h as i32 - 3);
+        for x in water_x - 12..=water_x + 12 {
+            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
+            let s = s.max(10).min(h as i32 - 3);
+            for y in s - 8..s {
+                if self.grid.get(x as i32, y).is_empty() {
+                    self.grid.set_material(x as i32, y, MaterialId::Water);
+                }
+            }
+        }
+
+        // Lava pool (right side)
+        let lava_x = 200;
+        for x in lava_x - 10..=lava_x + 10 {
+            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
+            let s = s.max(10).min(h as i32 - 3);
+            for y in s - 5..s {
+                if self.grid.get(x as i32, y).is_empty() {
+                    self.grid.set_material(x as i32, y, MaterialId::Lava);
+                }
+            }
+        }
+
+        // Wood structure near center-left
+        let wood_x = 90;
+        let wood_surface = (h as i32 - 3) - ((wood_x as f32 * 0.1).sin() * 5.0) as i32;
+        let wood_surface = wood_surface.max(10).min(h as i32 - 3);
+        for y in wood_surface - 8..wood_surface {
+            self.grid.set_material(wood_x, y, MaterialId::Wood);
+            self.grid.set_material(wood_x + 4, y, MaterialId::Wood);
+        }
+        for x in wood_x..=wood_x + 4 {
+            self.grid.set_material(x, wood_surface - 8, MaterialId::Wood);
+        }
+
+        // Sand dune (right of center)
+        let sand_x = 160;
+        let sand_surface = (h as i32 - 3) - ((sand_x as f32 * 0.1).sin() * 5.0) as i32;
+        let sand_surface = sand_surface.max(10).min(h as i32 - 3);
+        for dx in -8..=8 {
+            let pile_h = (8.0 - (dx as f32).abs()) as i32;
+            for dy in 0..pile_h {
+                let y = sand_surface - 1 - dy;
+                if self.grid.get(sand_x + dx, y).is_empty() {
+                    self.grid.set_material(sand_x + dx, y, MaterialId::Sand);
+                }
+            }
+        }
+
+        // Acid pool (far left)
+        let acid_x = 15;
+        for x in acid_x - 5..=acid_x + 5 {
+            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
+            let s = s.max(10).min(h as i32 - 3);
+            for y in s - 4..s {
+                if self.grid.get(x as i32, y).is_empty() {
+                    self.grid.set_material(x as i32, y, MaterialId::Acid);
+                }
+            }
+        }
+
+        // Stone wall obstacle (between player and water)
+        let wall_x = 110;
+        let wall_surface = (h as i32 - 3) - ((wall_x as f32 * 0.1).sin() * 5.0) as i32;
+        let wall_surface = wall_surface.max(10).min(h as i32 - 3);
+        for y in wall_surface - 6..wall_surface {
+            self.grid.set_material(wall_x, y, MaterialId::Stone);
+            self.grid.set_material(wall_x + 1, y, MaterialId::Stone);
+        }
+
         self.grid.fill_border(MaterialId::Stone);
 
         let cx = (w / 2) as f32;
@@ -159,14 +232,11 @@ impl Game {
 
     pub fn check_on_ground(&self) -> bool {
         if let Some(e) = self.player.entity(&self.entities) {
-            for b in &e.bodies {
-                if !b.alive {
-                    continue;
-                }
-                let bx = b.x as i32;
-                let by = b.y as i32;
-                let below = self.grid.get(bx, by + 1);
-                if below.is_solid() {
+            let bottom = (e.cy + e.half_h + 0.1) as i32;
+            let left = (e.cx - e.half_w) as i32;
+            let right = (e.cx + e.half_w) as i32;
+            for x in left..=right {
+                if self.grid.in_bounds(x, bottom) && self.grid.get(x, bottom).is_solid() {
                     return true;
                 }
             }
@@ -232,147 +302,76 @@ impl Game {
     }
 
     fn update_rigid_entity(&mut self, idx: usize, gravity: f32, damping: f32, max_vel: f32) {
-        let grid = &self.grid;
-        let (cx, cy, cvx, cvy) = {
+        let (cx, cy, cvx, cvy, half_w, half_h) = {
             let e = &self.entities.all()[idx];
-            (e.cx, e.cy, e.cvx, e.cvy)
+            (e.cx, e.cy, e.cvx, e.cvy, e.half_w, e.half_h)
         };
 
-        let mut new_cx = cx;
-        let mut new_cy = cy;
-        let mut new_cvx = cvx * damping;
-        let mut new_cvy = cvy * damping;
+        let mut nx = cx;
+        let mut ny = cy;
+        let mut nvx = cvx * damping;
+        let mut nvy = cvy * damping;
+        nvy += gravity;
 
-        new_cvy += gravity;
-
-        let v_mag = (new_cvx * new_cvx + new_cvy * new_cvy).sqrt();
+        let v_mag = (nvx * nvx + nvy * nvy).sqrt();
         if v_mag > max_vel {
-            new_cvx = new_cvx / v_mag * max_vel;
-            new_cvy = new_cvy / v_mag * max_vel;
+            nvx = nvx / v_mag * max_vel;
+            nvy = nvy / v_mag * max_vel;
         }
 
-        new_cx += new_cvx;
-        new_cy += new_cvy;
+        // Move X then resolve X collisions
+        nx += nvx;
+        let (resolved_x, hit_wall_x) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx > 0.0);
+        nx = resolved_x;
+        if hit_wall_x {
+            if nvx > 0.0 { nvx = 0.0; }
+            else if nvx < 0.0 { nvx = 0.0; }
+        }
 
-        let offsets = self.entities.all()[idx].rest_offsets.clone();
-        let radii: Vec<f32> = self.entities.all()[idx].bodies.iter().map(|b| b.radius).collect();
+        // Move Y then resolve Y collisions
+        ny += nvy;
+        let (resolved_y, hit_floor, hit_ceiling) = self.resolve_aabb_y(idx, nx, ny, half_w, half_h, nvy > 0.0);
+        ny = resolved_y;
+        if hit_floor {
+            nvy = 0.0;
+        }
+        if hit_ceiling {
+            nvy = 0.0;
+        }
 
-        for substep in 0..4 {
-            let mut total_push_x = 0.0;
-            let mut total_push_y = 0.0;
-            let mut push_count = 0;
-
-            for (i, &(ox, oy)) in offsets.iter().enumerate() {
-                let bx = new_cx + ox;
-                let by = new_cy + oy;
-                let r = radii[i];
-
-                let min_x = (bx - r).floor() as i32;
-                let max_x = (bx + r).ceil() as i32;
-                let min_y = (by - r).floor() as i32;
-                let max_y = (by + r).ceil() as i32;
-
-                for cy_cell in min_y..=max_y {
-                    for cx_cell in min_x..=max_x {
-                        if !grid.in_bounds(cx_cell, cy_cell) {
-                            continue;
-                        }
-                        let cell = grid.get(cx_cell, cy_cell);
-                        if cell.is_empty() || cell.is_liquid() {
-                            continue;
-                        }
-                        if cell.material == MaterialId::Fire {
-                            continue;
-                        }
-                        if !cell.is_solid() {
-                            continue;
-                        }
-
-                        let cell_min_x = cx_cell as f32;
-                        let cell_max_x = (cx_cell + 1) as f32;
-                        let cell_min_y = cy_cell as f32;
-                        let cell_max_y = (cy_cell + 1) as f32;
-
-                        let inside_x = bx >= cell_min_x && bx < cell_max_x;
-                        let inside_y = by >= cell_min_y && by < cell_max_y;
-
-                        if inside_x && inside_y {
-                            let dl = bx - cell_min_x;
-                            let dr = cell_max_x - bx;
-                            let dt = by - cell_min_y;
-                            let db = cell_max_y - by;
-                            let md = dl.min(dr).min(dt).min(db);
-                            if md == dt {
-                                total_push_y -= r + md;
-                                push_count += 1;
-                                if new_cvy > 0.0 { new_cvy = 0.0; }
-                            } else if md == db {
-                                total_push_y += r + md;
-                                push_count += 1;
-                                if new_cvy < 0.0 { new_cvy = 0.0; }
-                            } else if md == dl {
-                                total_push_x -= r + md;
-                                push_count += 1;
-                                if new_cvx > 0.0 { new_cvx = 0.0; }
-                            } else {
-                                total_push_x += r + md;
-                                push_count += 1;
-                                if new_cvx < 0.0 { new_cvx = 0.0; }
-                            }
-                        } else {
-                            let closest_x = bx.max(cell_min_x).min(cell_max_x);
-                            let closest_y = by.max(cell_min_y).min(cell_max_y);
-                            let dx = bx - closest_x;
-                            let dy = by - closest_y;
-                            let dist_sq = dx * dx + dy * dy;
-                            if dist_sq < r * r && dist_sq > 0.0001 {
-                                let dist = dist_sq.sqrt();
-                                let overlap = r - dist;
-                                total_push_x += dx / dist * overlap;
-                                total_push_y += dy / dist * overlap;
-                                push_count += 1;
-                                if dy < -0.5 && new_cvy > 0.0 { new_cvy = 0.0; }
-                            }
-                        }
-                    }
+        // Check material contacts
+        let (touching_lava, touching_fire, touching_acid, in_liquid) = {
+            let grid = &self.grid;
+            let mut tl = false;
+            let mut tf = false;
+            let mut ta = false;
+            let mut il = false;
+            let min_x = (nx - half_w).floor() as i32;
+            let max_x = (nx + half_w).ceil() as i32;
+            let min_y = (ny - half_h).floor() as i32;
+            let max_y = (ny + half_h).ceil() as i32;
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    if !grid.in_bounds(x, y) { continue; }
+                    let cell = grid.get(x, y);
+                    if cell.material == MaterialId::Lava { tl = true; }
+                    if cell.material == MaterialId::Fire { tf = true; }
+                    if cell.material == MaterialId::Acid { ta = true; }
+                    if cell.is_liquid() { il = true; }
                 }
             }
-
-            if push_count > 0 {
-                let inv = 1.0 / push_count as f32;
-                let px = total_push_x * inv;
-                let py = total_push_y * inv;
-                let mag = (px * px + py * py).sqrt();
-                if mag > 0.001 {
-                    new_cx += px;
-                    new_cy += py;
-                }
-            }
-        }
-
-        let mut touching_lava = false;
-        let mut touching_fire = false;
-        let mut touching_acid = false;
-        let mut in_liquid = false;
-
-        for (i, &(ox, oy)) in offsets.iter().enumerate() {
-            let bx = (new_cx + ox) as i32;
-            let by = (new_cy + oy) as i32;
-            if !grid.in_bounds(bx, by) {
-                continue;
-            }
-            let cell = grid.get(bx, by);
-            if cell.material == MaterialId::Lava { touching_lava = true; }
-            if cell.material == MaterialId::Fire { touching_fire = true; }
-            if cell.material == MaterialId::Acid { touching_acid = true; }
-            if cell.is_liquid() { in_liquid = true; }
-        }
+            (tl, tf, ta, il)
+        };
 
         if let Some(e) = self.entities.all_mut().get_mut(idx) {
-            e.cx = new_cx;
-            e.cy = new_cy;
-            e.cvx = new_cvx;
-            e.cvy = new_cvy;
+            e.cx = nx;
+            e.cy = ny;
+            e.cvx = nvx;
+            e.cvy = nvy;
+            if in_liquid {
+                e.cvy *= 0.6;
+                e.cvx *= 0.8;
+            }
             e.sync_bodies_to_center();
 
             if touching_lava {
@@ -396,11 +395,108 @@ impl Game {
                     if b.alive { b.health -= 0.25; }
                 }
             }
-            if in_liquid {
-                new_cvy *= 0.5;
-                e.cvy = new_cvy;
+        }
+    }
+
+    fn resolve_aabb_x(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, _moving_right: bool) -> (f32, bool) {
+        let grid = &self.grid;
+        let left = cx - hw;
+        let right = cx + hw;
+        let top = cy - hh;
+        let bottom = cy + hh;
+
+        let min_x = left.floor() as i32;
+        let max_x = right.ceil() as i32;
+        let min_y = top.floor() as i32;
+        let max_y = bottom.ceil() as i32;
+
+        let mut best_push = 0.0f32;
+        let mut hit = false;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                if !grid.in_bounds(x, y) { continue; }
+                let cell = grid.get(x, y);
+                if !cell.is_solid() { continue; }
+
+                let cell_left = x as f32;
+                let cell_right = (x + 1) as f32;
+                let cell_top = y as f32;
+                let cell_bottom = (y + 1) as f32;
+
+                if bottom <= cell_top || top >= cell_bottom {
+                    continue;
+                }
+
+                let pen_left = right - cell_left;
+                let pen_right = cell_right - left;
+
+                let push = if pen_left < pen_right { -pen_left } else { pen_right };
+                if push.abs() > best_push.abs() {
+                    best_push = push;
+                    hit = true;
+                }
             }
         }
+
+        (cx + best_push, hit)
+    }
+
+    fn resolve_aabb_y(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, moving_down: bool) -> (f32, bool, bool) {
+        let grid = &self.grid;
+        let left = cx - hw;
+        let right = cx + hw;
+        let top = cy - hh;
+        let bottom = cy + hh;
+
+        let min_x = left.floor() as i32;
+        let max_x = right.ceil() as i32;
+        let min_y = top.floor() as i32;
+        let max_y = bottom.ceil() as i32;
+
+        let mut max_pen = 0.0f32;
+        let mut hit_floor = false;
+        let mut hit_ceiling = false;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                if !grid.in_bounds(x, y) { continue; }
+                let cell = grid.get(x, y);
+                if !cell.is_solid() { continue; }
+
+                let cell_left = x as f32;
+                let cell_right = (x + 1) as f32;
+                let cell_top = y as f32;
+                let cell_bottom = (y + 1) as f32;
+
+                if right <= cell_left || left >= cell_right {
+                    continue;
+                }
+
+                if moving_down {
+                    let pen = bottom - cell_top;
+                    if pen > max_pen {
+                        max_pen = pen;
+                        hit_floor = true;
+                    }
+                } else {
+                    let pen = cell_bottom - top;
+                    if pen > max_pen {
+                        max_pen = pen;
+                        hit_ceiling = true;
+                    }
+                }
+            }
+        }
+
+        let new_cy = if hit_floor {
+            cy - max_pen
+        } else if hit_ceiling {
+            cy + max_pen
+        } else {
+            cy
+        };
+        (new_cy, hit_floor, hit_ceiling)
     }
 
     fn update_ragdoll_entity(&mut self, idx: usize, solver: &crate::physics::verlet::VerletSolver, substeps: u32) {

@@ -22,6 +22,8 @@ pub struct Entity {
     pub cy: f32,
     pub cvx: f32,
     pub cvy: f32,
+    pub half_w: f32,
+    pub half_h: f32,
     pub health: f32,
     pub max_health: f32,
     pub on_fire: bool,
@@ -46,6 +48,8 @@ impl Entity {
             max_health: 100.0,
             on_fire: false,
             fire_timer: 0,
+            half_w: 3.5,
+            half_h: 3.0,
         }
     }
 
@@ -106,6 +110,8 @@ impl Entity {
         self.cy = cy;
         self.cvx = 0.0;
         self.cvy = 0.0;
+        self.half_w = 3.5;
+        self.half_h = 2.5;
 
         let r = 0.5;
         let mat = match self.kind {
