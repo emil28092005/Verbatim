@@ -31,9 +31,9 @@ impl TerminalRenderer {
     }
 
     fn detect_size(&mut self) -> io::Result<()> {
-        let (w, h) = term_size().unwrap_or((120, 40));
-        self.width = (w as usize).min(250).max(60);
-        self.height = (h as usize).min(80).max(20);
+        let (w, h) = term_size().unwrap_or((200, 60));
+        self.width = (w as usize).min(250).max(80);
+        self.height = (h as usize).min(120).max(25);
         Ok(())
     }
 

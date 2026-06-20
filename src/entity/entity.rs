@@ -107,24 +107,27 @@ impl Entity {
         self.cvx = 0.0;
         self.cvy = 0.0;
 
-        let r = 0.45;
+        let r = 0.5;
         let mat = match self.kind {
             EntityKind::Player => MaterialId::Flesh,
             EntityKind::Goblin => MaterialId::Flesh,
             EntityKind::Corpse => MaterialId::Flesh,
         };
 
-        let layout = [
-            (-1.0, -1.0, mat),  // 0: top-left
-            ( 0.0, -1.0, mat),  // 1: top-center
-            ( 1.0, -1.0, mat),  // 2: top-right
-            (-1.0,  0.0, mat),  // 3: mid-left
-            ( 0.0,  0.0, mat),  // 4: center
-            ( 1.0,  0.0, mat),  // 5: mid-right
-            (-1.0,  1.0, mat),  // 6: bot-left
-            ( 0.0,  1.0, mat),  // 7: bot-center
-            ( 1.0,  1.0, mat),  // 8: bot-right
-            ( 2.0,  0.0, mat),  // 9: hand
+        // 5x5 body + 2 arms = 27 bodies
+        let layout: [(f32, f32, MaterialId); 27] = [
+            // Row 0 (top): head
+            (-2.0, -2.0, mat), (-1.0, -2.0, mat), ( 0.0, -2.0, mat), ( 1.0, -2.0, mat), ( 2.0, -2.0, mat),
+            // Row 1: shoulders
+            (-2.0, -1.0, mat), (-1.0, -1.0, mat), ( 0.0, -1.0, mat), ( 1.0, -1.0, mat), ( 2.0, -1.0, mat),
+            // Row 2: torso
+            (-2.0,  0.0, mat), (-1.0,  0.0, mat), ( 0.0,  0.0, mat), ( 1.0,  0.0, mat), ( 2.0,  0.0, mat),
+            // Row 3: hips
+            (-2.0,  1.0, mat), (-1.0,  1.0, mat), ( 0.0,  1.0, mat), ( 1.0,  1.0, mat), ( 2.0,  1.0, mat),
+            // Row 4: legs
+            (-2.0,  2.0, mat), (-1.0,  2.0, mat), ( 0.0,  2.0, mat), ( 1.0,  2.0, mat), ( 2.0,  2.0, mat),
+            // Arms
+            ( 3.0, -1.0, mat), ( 3.0,  0.0, mat),
         ];
 
         for &(ox, oy, m) in &layout {
@@ -133,19 +136,23 @@ impl Entity {
         }
 
         let mk = |a: usize, b: usize, len: f32| Constraint::new(a, b, len, 1.0);
-        self.constraints.push(mk(0, 1, 1.0));
-        self.constraints.push(mk(1, 2, 1.0));
-        self.constraints.push(mk(3, 4, 1.0));
-        self.constraints.push(mk(4, 5, 1.0));
-        self.constraints.push(mk(6, 7, 1.0));
-        self.constraints.push(mk(7, 8, 1.0));
-        self.constraints.push(mk(0, 3, 1.0));
-        self.constraints.push(mk(3, 6, 1.0));
-        self.constraints.push(mk(1, 4, 1.0));
-        self.constraints.push(mk(4, 7, 1.0));
-        self.constraints.push(mk(2, 5, 1.0));
-        self.constraints.push(mk(5, 8, 1.0));
-        self.constraints.push(mk(5, 9, 1.0));
+
+        // Horizontal connections
+        for row in 0..5 {
+            let base = row * 5;
+            for col in 0..4 {
+                self.constraints.push(mk(base + col, base + col + 1, 1.0));
+            }
+        }
+        // Vertical connections
+        for col in 0..5 {
+            for row in 0..4 {
+                self.constraints.push(mk(row * 5 + col, (row + 1) * 5 + col, 1.0));
+            }
+        }
+        // Arm connections
+        self.constraints.push(mk(9, 25, 1.0));
+        self.constraints.push(mk(25, 26, 1.0));
     }
 
     pub fn sync_bodies_to_center(&mut self) {
