@@ -1,6 +1,6 @@
 use verbatim::ai::GameSession;
 use verbatim::ai::AiAction;
-use verbatim::ai::{ReplayRecorder, ReplayPlayer};
+use verbatim::ai::ReplayPlayer;
 
 #[test]
 fn replay_deterministic() {

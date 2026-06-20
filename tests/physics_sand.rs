@@ -1,6 +1,5 @@
 use verbatim::ai::GameSession;
 use verbatim::ai::AiAction;
-use verbatim::world::cell::MaterialId;
 
 fn setup_empty() -> GameSession {
     let mut s = GameSession::new_seeded(42);

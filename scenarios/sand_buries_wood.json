@@ -1,0 +1,15 @@
+{
+  "name": "sand_buries_wood",
+  "description": "Sand falling onto wood structure eventually covers it",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 125, "w": 20, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 124, "material": "wood"},
+    {"type": "fill_rect", "x": 103, "y": 115, "w": 5, "h": 5, "material": "sand"}
+  ],
+  "steps": 30,
+  "assertions": [
+    {"type": "material_count_in_region", "x": 103, "y": 120, "w": 5, "h": 5, "material": "sand", "min": 3, "max": 30}
+  ]
+}

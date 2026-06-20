@@ -1,0 +1,15 @@
+{
+  "name": "lava_pool_interaction",
+  "description": "Lava pool cools when water is poured on it",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 125, "w": 20, "h": 3, "material": "stone"},
+    {"type": "fill_rect", "x": 102, "y": 122, "w": 6, "h": 3, "material": "lava"},
+    {"type": "fill_rect", "x": 110, "y": 122, "w": 6, "h": 3, "material": "water"}
+  ],
+  "steps": 120,
+  "assertions": [
+    {"type": "material_count_in_region", "x": 100, "y": 118, "w": 20, "h": 10, "material": "stone", "min": 10, "max": 100}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "steam_condenses",
+  "description": "Steam in a closed chamber condenses to water over time",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 130, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 100, "y": 100, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 99, "y": 101, "w": 1, "h": 29, "material": "stone"},
+    {"type": "fill_rect", "x": 120, "y": 101, "w": 1, "h": 29, "material": "stone"},
+    {"type": "set_cell", "x": 105, "y": 120, "material": "steam"},
+    {"type": "set_cell", "x": 106, "y": 120, "material": "steam"},
+    {"type": "set_cell", "x": 105, "y": 121, "material": "steam"},
+    {"type": "set_cell", "x": 106, "y": 121, "material": "steam"}
+  ],
+  "steps": 80,
+  "assertions": [
+    {"type": "material_count_in_region", "x": 100, "y": 105, "w": 20, "h": 25, "material": "water", "min": 1, "max": 20}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "fire_chain_wood",
+  "description": "Fire spreads through a line of wood from left to right",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 120, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 100, "y": 119, "w": 15, "h": 1, "material": "wood"},
+    {"type": "set_cell", "x": 100, "y": 119, "material": "fire"}
+  ],
+  "steps": 50,
+  "assertions": [
+    {"type": "no_material_in_region", "x": 99, "y": 118, "w": 17, "h": 3, "material": "wood"}
+  ]
+}

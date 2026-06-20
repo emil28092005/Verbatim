@@ -1,0 +1,16 @@
+{
+  "name": "acid_eats_through_wall",
+  "description": "Acid dissolves a thin wood wall",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 125, "w": 20, "h": 1, "material": "stone"},
+    {"type": "set_cell", "x": 108, "y": 124, "material": "wood"},
+    {"type": "set_cell", "x": 108, "y": 123, "material": "wood"},
+    {"type": "fill_rect", "x": 100, "y": 123, "w": 8, "h": 2, "material": "acid"}
+  ],
+  "steps": 40,
+  "assertions": [
+    {"type": "no_material_in_region", "x": 107, "y": 122, "w": 3, "h": 4, "material": "wood"}
+  ]
+}

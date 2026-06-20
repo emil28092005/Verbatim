@@ -1,0 +1,15 @@
+{
+  "name": "entity_survives_fall",
+  "description": "Goblin falls onto stone floor and survives",
+  "seed": 42,
+  "init_mode": "empty",
+  "setup": [
+    {"type": "fill_rect", "x": 100, "y": 130, "w": 20, "h": 5, "material": "stone"},
+    {"type": "spawn", "kind": "goblin", "x": 110, "y": 115}
+  ],
+  "steps": 60,
+  "assertions": [
+    {"type": "entity_alive", "id": 1},
+    {"type": "player_alive"}
+  ]
+}

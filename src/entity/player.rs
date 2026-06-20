@@ -11,8 +11,8 @@ impl Player {
         let id = manager.spawn(EntityKind::Player);
         Self {
             entity_id: id,
-            move_speed: 0.25,
-            jump_force: 0.8,
+            move_speed: 0.3,
+            jump_force: 1.5,
         }
     }
 

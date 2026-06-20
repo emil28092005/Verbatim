@@ -4,13 +4,13 @@
   "seed": 42,
   "init_mode": "empty",
   "setup": [
-    {"type": "fill_rect", "x": 100, "y": 115, "w": 20, "h": 1, "material": "stone"},
-    {"type": "fill_rect", "x": 100, "y": 100, "w": 20, "h": 1, "material": "stone"},
-    {"type": "set_cell", "x": 105, "y": 110, "material": "lava"},
-    {"type": "set_cell", "x": 106, "y": 110, "material": "water"}
+    {"type": "fill_rect", "x": 100, "y": 120, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 100, "y": 95, "w": 20, "h": 1, "material": "stone"},
+    {"type": "fill_rect", "x": 102, "y": 112, "w": 4, "h": 4, "material": "lava"},
+    {"type": "fill_rect", "x": 107, "y": 112, "w": 4, "h": 4, "material": "water"}
   ],
-  "steps": 15,
+  "steps": 60,
   "assertions": [
-    {"type": "no_material_in_region", "x": 100, "y": 105, "w": 20, "h": 10, "material": "lava"}
+    {"type": "material_count_in_region", "x": 100, "y": 100, "w": 20, "h": 20, "material": "steam", "min": 1, "max": 30}
   ]
 }

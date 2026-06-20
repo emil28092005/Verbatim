@@ -244,11 +244,16 @@ impl Game {
 
     pub fn check_on_ground(&self) -> bool {
         if let Some(e) = self.player.entity(&self.entities) {
-            let bottom = (e.cy + e.half_h + 0.1) as i32;
+            let bottom_y = e.cy + e.half_h;
+            let bottom_cell = bottom_y.floor() as i32;
+            let frac = bottom_y - bottom_cell as f32;
+            if frac > 0.05 {
+                return false;
+            }
             let left = (e.cx - e.half_w) as i32;
             let right = (e.cx + e.half_w) as i32;
             for x in left..=right {
-                if self.grid.in_bounds(x, bottom) && self.grid.get(x, bottom).is_solid() {
+                if self.grid.in_bounds(x, bottom_cell) && self.grid.get(x, bottom_cell).is_solid() {
                     return true;
                 }
             }
@@ -273,8 +278,8 @@ impl Game {
     fn update_entities(&mut self) {
         let solver = self.verlet.clone();
         let substeps = solver.substeps;
-        let gravity = solver.gravity;
-        let damping = solver.damping;
+        let gravity = self.verlet.gravity;
+        let damping = self.verlet.damping;
         let max_vel = solver.max_vel;
 
         let entity_count = self.entities.all().len();
@@ -333,7 +338,7 @@ impl Game {
 
         // Move X then resolve X collisions
         nx += nvx;
-        let (resolved_x, hit_wall_x) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx > 0.0);
+        let (resolved_x, hit_wall_x) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx);
         nx = resolved_x;
         if hit_wall_x {
             if nvx > 0.0 { nvx = 0.0; }
@@ -410,7 +415,7 @@ impl Game {
         }
     }
 
-    fn resolve_aabb_x(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, _moving_right: bool) -> (f32, bool) {
+    fn resolve_aabb_x(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, vx: f32) -> (f32, bool) {
         let grid = &self.grid;
         let left = cx - hw;
         let right = cx + hw;
@@ -422,7 +427,7 @@ impl Game {
         let min_y = top.floor() as i32;
         let max_y = bottom.ceil() as i32;
 
-        let mut best_push = 0.0f32;
+        let mut new_cx = cx;
         let mut hit = false;
 
         for y in min_y..=max_y {
@@ -440,18 +445,33 @@ impl Game {
                     continue;
                 }
 
-                let pen_left = right - cell_left;
-                let pen_right = cell_right - left;
-
-                let push = if pen_left < pen_right { -pen_left } else { pen_right };
-                if push.abs() > best_push.abs() {
-                    best_push = push;
-                    hit = true;
+                if vx > 0.0 {
+                    let pen = right - cell_left;
+                    if pen > 0.0 && pen < 1.5 {
+                        new_cx -= pen;
+                        hit = true;
+                    }
+                } else if vx < 0.0 {
+                    let pen = cell_right - left;
+                    if pen > 0.0 && pen < 1.5 {
+                        new_cx += pen;
+                        hit = true;
+                    }
+                } else {
+                    let pen_left = right - cell_left;
+                    let pen_right = cell_right - left;
+                    if pen_left < pen_right && pen_left > 0.0 && pen_left < 1.5 {
+                        new_cx -= pen_left;
+                        hit = true;
+                    } else if pen_right > 0.0 && pen_right < 1.5 {
+                        new_cx += pen_right;
+                        hit = true;
+                    }
                 }
             }
         }
 
-        (cx + best_push, hit)
+        (new_cx, hit)
     }
 
     fn resolve_aabb_y(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, moving_down: bool) -> (f32, bool, bool) {
@@ -482,6 +502,10 @@ impl Game {
                 let cell_bottom = (y + 1) as f32;
 
                 if right <= cell_left || left >= cell_right {
+                    continue;
+                }
+
+                if bottom <= cell_top || top >= cell_bottom {
                     continue;
                 }
 
