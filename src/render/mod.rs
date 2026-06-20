@@ -1,5 +1,4 @@
 pub mod terminal;
-pub mod window;
 pub mod window_input;
 pub mod vulkan;
 
