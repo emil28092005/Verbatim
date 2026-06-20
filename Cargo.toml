@@ -12,6 +12,10 @@ fontdue = "0.9"
 winit = "0.30"
 softbuffer = "0.4"
 log = "0.4"
+ash = "0.38"
+ash-window = "0.13"
+raw-window-handle = "0.6"
+bytemuck = "1"
 
 [profile.release]
 opt-level = 3

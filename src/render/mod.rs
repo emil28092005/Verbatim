@@ -1,6 +1,7 @@
 pub mod terminal;
 pub mod window;
 pub mod window_input;
+pub mod vulkan;
 
 use crate::entity::EntityManager;
 use crate::world::grid::Grid;

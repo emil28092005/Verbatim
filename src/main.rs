@@ -33,6 +33,9 @@ fn main() {
         "window" => {
             run_window_mode();
         }
+        "vulkan" => {
+            run_vulkan_mode();
+        }
         "terminal" => {
             std::panic::set_hook(Box::new(|info| {
                 let _ = crossterm::terminal::disable_raw_mode();
@@ -209,6 +212,7 @@ fn run_window_mode() {
     use std::time::{Duration, Instant};
 
     use std::sync::Arc;
+    use std::num::NonZeroU32;
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let window = event_loop.create_window(
@@ -223,6 +227,11 @@ fn run_window_mode() {
         .expect("Failed to create softbuffer context");
     let mut surface = softbuffer::Surface::new(&context, Arc::clone(&window))
         .expect("Failed to create surface");
+
+    let pw = 160 * 8;
+    let ph = 50 * 16;
+    surface.resize(NonZeroU32::new(pw).unwrap(), NonZeroU32::new(ph).unwrap())
+        .expect("Failed to resize surface");
 
     let mut renderer = WindowRenderer::new();
     let mut game = Game::new();
@@ -340,6 +349,147 @@ fn run_window_mode() {
                 let len = buffer.len().min(pixels.len());
                 buffer[..len].copy_from_slice(&pixels[..len]);
                 buffer.present().expect("present");
+            }
+            _ => {}
+        }
+    }).expect("event loop error");
+}
+
+fn run_vulkan_mode() {
+    use verbatim::render::vulkan::VulkanRenderer;
+    use winit::event::{Event, WindowEvent};
+    use winit::event_loop::{EventLoop, ControlFlow};
+    use winit::window::Window;
+    use std::time::{Duration, Instant};
+    use std::sync::Arc;
+
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let window = event_loop.create_window(
+        Window::default_attributes()
+            .with_title("Verbatim (Vulkan)")
+            .with_inner_size(winit::dpi::LogicalSize::new(160 * 8, 50 * 16))
+    ).expect("Failed to create window");
+    let window = Arc::new(window);
+
+    let mut renderer = match VulkanRenderer::new(Arc::clone(&window)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Vulkan init failed: {e}");
+            eprintln!("Vulkan init failed: {e}");
+            eprintln!("Falling back to softbuffer window mode...");
+            run_window_mode();
+            return;
+        }
+    };
+
+    let mut game = Game::new();
+    game.init_world();
+
+    let mut input = WindowInput::new();
+    let vw = renderer.grid_w();
+    let vh = renderer.grid_h();
+
+    let fixed_dt = Duration::from_millis(16);
+    let mut last_time = Instant::now();
+    let mut accumulator = Duration::ZERO;
+    let mut running = true;
+
+    event_loop.run(|event, ctrl| {
+        ctrl.set_control_flow(ControlFlow::Poll);
+
+        match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        running = false;
+                        ctrl.exit();
+                    }
+                    WindowEvent::KeyboardInput { event: key_event, .. } => {
+                        input.on_key_event(key_event.physical_key, key_event.state);
+                    }
+                    _ => {}
+                }
+            }
+            Event::AboutToWait => {
+                if !running {
+                    ctrl.exit();
+                    return;
+                }
+
+                let now = Instant::now();
+                let frame_time = now.duration_since(last_time);
+                last_time = now;
+                accumulator += frame_time;
+
+                let mut steps = 0;
+                while accumulator >= fixed_dt && steps < 5 {
+                    game.fixed_update();
+                    accumulator -= fixed_dt;
+                    steps += 1;
+                }
+
+                input.update();
+
+                if input.quit {
+                    running = false;
+                    ctrl.exit();
+                    return;
+                }
+
+                if input.jump {
+                    let on_ground = game.check_on_ground();
+                    game.player.jump(&mut game.entities, on_ground);
+                }
+
+                if input.left {
+                    game.player.move_left(&mut game.entities);
+                } else if input.right {
+                    game.player.move_right(&mut game.entities);
+                } else {
+                    game.player.stop_horizontal(&mut game.entities);
+                }
+
+                if input.cam_left { game.cam_x -= 3; }
+                if input.cam_right { game.cam_x += 3; }
+                if input.cam_up { game.cam_y -= 3; }
+                if input.cam_down { game.cam_y += 3; }
+
+                if let Some(brush_id) = input.paint {
+                    let mat = match brush_id {
+                        1 => MaterialId::Sand,
+                        2 => MaterialId::Water,
+                        3 => MaterialId::Stone,
+                        4 => MaterialId::Lava,
+                        5 => MaterialId::Wood,
+                        6 => MaterialId::Acid,
+                        7 => MaterialId::Grass,
+                        8 => MaterialId::Dirt,
+                        9 => MaterialId::Fire,
+                        0 => MaterialId::Flesh,
+                        99 => MaterialId::Empty,
+                        _ => MaterialId::Empty,
+                    };
+                    let cx = game.cam_x + (vw as i32 / 2);
+                    let cy = game.cam_y + (vh as i32 / 2);
+                    let r = 2;
+                    for dy in -r..=r {
+                        for dx in -r..=r {
+                            if dx * dx + dy * dy <= r * r + 1 {
+                                if mat == MaterialId::Empty {
+                                    game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
+                                } else {
+                                    game.grid.set_material(cx + dx, cy + dy, mat);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let (px, py) = game.player.center(&game.entities);
+                game.cam_x = px as i32 - (vw as i32 / 2);
+                game.cam_y = py as i32 - (vh as i32 / 2);
+
+                renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
             }
             _ => {}
         }
