@@ -206,44 +206,50 @@ impl Game {
     }
 
     pub fn handle_input(&mut self, vw: usize, vh: usize) {
-        let one_shot = self.input.update();
-        match one_shot {
-            Action::Quit => {
-                self.running = false;
-            }
-            Action::Paint(brush) => {
-                let mat = brush.to_material();
-                let cx = self.cam_x + (vw as i32 / 2);
-                let cy = self.cam_y + (vh as i32 / 2);
-                let r = 2;
-                for dy in -r..=r {
-                    for dx in -r..=r {
-                        if dx * dx + dy * dy <= r * r + 1 {
-                            if let Some(m) = mat {
-                                self.grid.set_material(cx + dx, cy + dy, m);
-                            } else {
-                                self.grid.set(cx + dx, cy + dy, crate::world::cell::Cell::empty());
+        let one_shots = self.input.update();
+
+        for action in one_shots {
+            match action {
+                Action::Quit => {
+                    self.running = false;
+                    return;
+                }
+                Action::Paint(brush) => {
+                    let mat = brush.to_material();
+                    let cx = self.cam_x + (vw as i32 / 2);
+                    let cy = self.cam_y + (vh as i32 / 2);
+                    let r = 2;
+                    for dy in -r..=r {
+                        for dx in -r..=r {
+                            if dx * dx + dy * dy <= r * r + 1 {
+                                if let Some(m) = mat {
+                                    self.grid.set_material(cx + dx, cy + dy, m);
+                                } else {
+                                    self.grid.set(cx + dx, cy + dy, crate::world::cell::Cell::empty());
+                                }
                             }
                         }
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
 
         if !self.running {
             return;
         }
 
+        // Jump: only on press, not held
+        if self.input.jump_requested() {
+            let on_ground = self.check_on_ground();
+            self.player.jump(&mut self.entities, on_ground);
+        }
+
+        // Movement: applied every tick while held
         for action in self.input.held_actions() {
             match action {
-                Action::Quit => self.running = false,
                 Action::MoveLeft => self.player.move_left(&mut self.entities),
                 Action::MoveRight => self.player.move_right(&mut self.entities),
-                Action::Jump => {
-                    let on_ground = self.check_on_ground();
-                    self.player.jump(&mut self.entities, on_ground);
-                }
                 Action::MoveCameraLeft => self.cam_x -= 2,
                 Action::MoveCameraRight => self.cam_x += 2,
                 Action::MoveCameraUp => self.cam_y -= 2,
