@@ -33,6 +33,7 @@ pub struct GraphicsRenderer {
     entry: ash::Entry,
     instance: ash::Instance,
     surface: vk::SurfaceKHR,
+    physical_device: vk::PhysicalDevice,
     device: ash::Device,
     graphics_queue: vk::Queue,
 
@@ -292,7 +293,7 @@ impl GraphicsRenderer {
 
     Ok(Self {
         grid_w, grid_h,
-        entry, instance, surface, device, graphics_queue,
+        entry, instance, surface, physical_device, device, graphics_queue,
         swapchain_loader, swapchain, swapchain_image_views, swapchain_extent: extent,
         render_pass, pipeline, pipeline_layout, framebuffers,
         command_pool, command_buffers,
@@ -304,6 +305,7 @@ impl GraphicsRenderer {
 }
 
     pub fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) {
+        self.check_resize();
         let reg = MaterialRegistry::instance();
 
         let mut entity_map: std::collections::HashMap<(i32, i32), [u8; 4]> = std::collections::HashMap::new();
@@ -438,6 +440,142 @@ impl GraphicsRenderer {
 
     pub fn grid_w(&self) -> usize { self.grid_w }
     pub fn grid_h(&self) -> usize { self.grid_h }
+
+    fn check_resize(&mut self) {
+        let sl = ash::khr::surface::Instance::new(&self.entry, &self.instance);
+        let caps = match unsafe { sl.get_physical_device_surface_capabilities(self.physical_device, self.surface) } {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let new_extent = if caps.current_extent.width != u32::MAX {
+            caps.current_extent
+        } else {
+            return;
+        };
+
+        if new_extent.width == self.swapchain_extent.width
+            && new_extent.height == self.swapchain_extent.height {
+            return;
+        }
+
+        if new_extent.width == 0 || new_extent.height == 0 {
+            return;
+        }
+
+        unsafe { let _ = self.device.device_wait_idle(); }
+
+        // Destroy old swapchain resources
+        for &fb in &self.framebuffers { unsafe { self.device.destroy_framebuffer(fb, None); } }
+        for &v in &self.swapchain_image_views { unsafe { self.device.destroy_image_view(v, None); } }
+
+        // Recreate swapchain
+        let qf_slice = [0u32]; // placeholder, not used with EXCLUSIVE
+        let sci = vk::SwapchainCreateInfoKHR::default()
+            .surface(self.surface)
+            .min_image_count(caps.min_image_count.max(2))
+            .image_format(vk::Format::B8G8R8A8_UNORM)
+            .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
+            .image_extent(new_extent)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .pre_transform(caps.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(vk::PresentModeKHR::FIFO)
+            .clipped(true)
+            .old_swapchain(self.swapchain);
+
+        let new_swapchain = match unsafe { self.swapchain_loader.create_swapchain(&sci, None) } {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let new_images = match unsafe { self.swapchain_loader.get_swapchain_images(new_swapchain) } {
+            Ok(i) => i,
+            Err(_) => return,
+        };
+
+        let new_views: Vec<_> = new_images.iter()
+            .map(|&img| {
+                let vi = vk::ImageViewCreateInfo::default()
+                    .image(img).view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0, level_count: 1,
+                        base_array_layer: 0, layer_count: 1,
+                    });
+                unsafe { self.device.create_image_view(&vi, None).expect("image_view") }
+            }).collect();
+
+        let new_framebuffers: Vec<_> = new_views.iter()
+            .map(|&view| {
+                let fci = vk::FramebufferCreateInfo::default()
+                    .render_pass(self.render_pass)
+                    .attachments(std::slice::from_ref(&view))
+                    .width(new_extent.width).height(new_extent.height).layers(1);
+                unsafe { self.device.create_framebuffer(&fci, None).expect("fb") }
+            }).collect();
+
+        // Reallocate command buffers for new count
+        unsafe { self.device.free_command_buffers(self.command_pool, &self.command_buffers); }
+        let cai = vk::CommandBufferAllocateInfo::default()
+            .command_pool(self.command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(new_framebuffers.len() as u32);
+        let new_cmd_bufs = unsafe { self.device.allocate_command_buffers(&cai).expect("cmd_bufs") };
+
+        // Reallocate instance buffer if grid size changed
+        let new_grid_w = (new_extent.width / CHAR_W) as usize;
+        let new_grid_h = (new_extent.height / CHAR_H) as usize;
+        let new_count = new_grid_w * new_grid_h;
+
+        if new_count != self.instance_count {
+            unsafe {
+                self.device.unmap_memory(self.instance_memory);
+                self.device.destroy_buffer(self.instance_buffer, None);
+                self.device.free_memory(self.instance_memory, None);
+            }
+
+            let inst_sz = (new_count * std::mem::size_of::<ColorInstance>()) as vk::DeviceSize;
+            let ibi = vk::BufferCreateInfo::default()
+                .size(inst_sz)
+                .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+                .sharing_mode(vk::SharingMode::EXCLUSIVE);
+            self.instance_buffer = unsafe { self.device.create_buffer(&ibi, None) }.expect("inst buf");
+            let ireq = unsafe { self.device.get_buffer_memory_requirements(self.instance_buffer) };
+
+            let find_mem = |filter: u32, props: vk::MemoryPropertyFlags| -> u32 {
+                let mp = unsafe { self.instance.get_physical_device_memory_properties(self.physical_device) };
+                for (i, mt) in mp.memory_types.iter().enumerate() {
+                    if (filter & (1 << i)) != 0 && mt.property_flags.contains(props) { return i as u32; }
+                }
+                0
+            };
+            let imt = find_mem(ireq.memory_type_bits, vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT);
+            self.instance_memory = unsafe { self.device.allocate_memory(
+                &vk::MemoryAllocateInfo::default().allocation_size(ireq.size).memory_type_index(imt), None)
+            }.expect("inst mem");
+            self.instance_ptr = unsafe {
+                self.device.bind_buffer_memory(self.instance_buffer, self.instance_memory, 0).expect("bind");
+                let ptr = self.device.map_memory(self.instance_memory, 0, inst_sz, vk::MemoryMapFlags::default()).expect("map");
+                ptr as *mut ColorInstance
+            };
+            self.instance_count = new_count;
+        }
+
+        // Destroy old swapchain
+        unsafe { self.swapchain_loader.destroy_swapchain(self.swapchain, None); }
+
+        self.swapchain = new_swapchain;
+        self.swapchain_image_views = new_views;
+        self.framebuffers = new_framebuffers;
+        self.command_buffers = new_cmd_bufs;
+        self.swapchain_extent = new_extent;
+        self.grid_w = new_grid_w;
+        self.grid_h = new_grid_h;
+    }
 }
 
 impl Drop for GraphicsRenderer {

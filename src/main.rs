@@ -236,8 +236,6 @@ fn run_ascii_mode() {
     game.init_world();
 
     let mut input = WindowInput::new();
-    let vw = renderer.grid_w();
-    let vh = renderer.grid_h();
 
     let fixed_dt = Duration::from_millis(16);
     let mut last_time = Instant::now();
@@ -265,6 +263,9 @@ fn run_ascii_mode() {
                     ctrl.exit();
                     return;
                 }
+
+                let vw = renderer.grid_w();
+                let vh = renderer.grid_h();
 
                 let now = Instant::now();
                 let frame_time = now.duration_since(last_time);
@@ -378,8 +379,6 @@ fn run_graphics_mode() {
     game.init_world();
 
     let mut input = WindowInput::new();
-    let vw = renderer.grid_w();
-    let vh = renderer.grid_h();
 
     let fixed_dt = Duration::from_millis(16);
     let mut last_time = Instant::now();
@@ -407,6 +406,9 @@ fn run_graphics_mode() {
                     ctrl.exit();
                     return;
                 }
+
+                let vw = renderer.grid_w();
+                let vh = renderer.grid_h();
 
                 let now = Instant::now();
                 let frame_time = now.duration_since(last_time);
