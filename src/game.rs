@@ -79,7 +79,7 @@ impl Game {
                 break;
             }
         }
-        let cy = (surface_y as f32) - 4.0;
+        let cy = (surface_y as f32) - 6.0;
         self.player.spawn_at(&mut self.entities, cx, cy);
 
         let (px, py) = self.player.center(&self.entities);
@@ -87,8 +87,8 @@ impl Game {
     }
 
     pub fn center_camera_on(&mut self, px: f32, py: f32) {
-        self.cam_x = px as i32 - 40;
-        self.cam_y = py as i32 - 12;
+        self.cam_x = px as i32 - 60;
+        self.cam_y = py as i32 - 20;
     }
 
     pub fn run<R: Renderer>(&mut self, renderer: &mut R) {
@@ -108,12 +108,15 @@ impl Game {
                 self.accumulator -= self.fixed_dt;
             }
 
+            let vw = renderer.viewport_w();
+            let vh = renderer.viewport_h();
             let (px, py) = self.player.center(&self.entities);
-            self.center_camera_on(px, py);
+            self.cam_x = px as i32 - (vw as i32 / 2);
+            self.cam_y = py as i32 - (vh as i32 / 2);
 
             let _ = renderer.render(&self.grid, &self.entities, self.cam_x, self.cam_y);
 
-            self.handle_input(renderer.viewport_w(), renderer.viewport_h());
+            self.handle_input(vw, vh);
         }
 
         let _ = renderer.shutdown();
@@ -246,13 +249,14 @@ impl Game {
                     }
                 }
 
-                solver.solve_constraints(&mut bodies, &constraints, 2);
-
-                for b in &mut bodies {
-                    if !b.alive {
-                        continue;
+                for _ci in 0..4 {
+                    solver.solve_constraints(&mut bodies, &constraints, 1);
+                    for b in &mut bodies {
+                        if !b.alive {
+                            continue;
+                        }
+                        resolve_grid_collision(grid, b);
                     }
-                    resolve_grid_collision(grid, b);
                 }
             }
 

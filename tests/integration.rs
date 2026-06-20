@@ -87,7 +87,7 @@ fn pipe_protocol_init_and_step() {
     let mut output = String::new();
     let stdout = child.stdout.as_mut().expect("failed to open stdout");
     use std::io::Read;
-    let mut buf = [0u8; 4096];
+    let mut buf = [0u8; 65536];
     let n = stdout.read(&mut buf).expect("read");
     output.push_str(&String::from_utf8_lossy(&buf[..n]));
 

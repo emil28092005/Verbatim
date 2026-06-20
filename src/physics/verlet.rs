@@ -94,11 +94,11 @@ pub struct VerletSolver {
 impl VerletSolver {
     pub fn new() -> Self {
         Self {
-            gravity: 0.08,
-            damping: 0.98,
+            gravity: 0.04,
+            damping: 0.97,
             dt: 1.0,
-            max_vel: 0.8,
-            substeps: 4,
+            max_vel: 1.0,
+            substeps: 8,
         }
     }
 
@@ -126,6 +126,7 @@ impl VerletSolver {
     }
 
     pub fn solve_constraints(&self, bodies: &mut [SubBody], constraints: &[Constraint], iterations: u32) {
+        const MAX_CORRECTION: f32 = 0.5;
         for _ in 0..iterations {
             for c in constraints {
                 let (ba, bb) = if c.a < bodies.len() && c.b < bodies.len() {
@@ -143,8 +144,14 @@ impl VerletSolver {
                     continue;
                 }
                 let diff = (dist - c.rest_length) / dist;
-                let sx = dx * 0.5 * diff * c.stiffness;
-                let sy = dy * 0.5 * diff * c.stiffness;
+                let mut sx = dx * 0.5 * diff * c.stiffness;
+                let mut sy = dy * 0.5 * diff * c.stiffness;
+                let corr_mag = (sx * sx + sy * sy).sqrt();
+                if corr_mag > MAX_CORRECTION {
+                    let scale = MAX_CORRECTION / corr_mag;
+                    sx *= scale;
+                    sy *= scale;
+                }
                 bodies[c.a].x += sx;
                 bodies[c.a].y += sy;
                 bodies[c.b].x -= sx;

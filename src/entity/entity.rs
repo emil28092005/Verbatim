@@ -91,33 +91,73 @@ impl Entity {
         self.bodies.clear();
         self.constraints.clear();
 
-        let r = 0.4;
+        let r = 0.7;
         let mat = match self.kind {
             EntityKind::Player => MaterialId::Flesh,
             EntityKind::Goblin => MaterialId::Flesh,
             EntityKind::Corpse => MaterialId::Flesh,
         };
 
-        self.bodies.push(SubBody::new(cx, cy - 2.0, r, mat));
-        self.bodies.push(SubBody::new(cx, cy - 1.0, r, mat));
-        self.bodies.push(SubBody::new(cx - 0.8, cy - 1.0, r, mat));
-        self.bodies.push(SubBody::new(cx + 0.8, cy - 1.0, r, mat));
-        self.bodies.push(SubBody::new(cx - 0.5, cy, r, mat));
-        self.bodies.push(SubBody::new(cx + 0.5, cy, r, mat));
-        self.bodies.push(SubBody::new(cx, cy + 1.0, r, MaterialId::Bone));
+        // Head
+        self.bodies.push(SubBody::new(cx, cy - 3.5, r, mat));        // 0: head top
+        self.bodies.push(SubBody::new(cx - 0.8, cy - 3.0, r, mat));  // 1: head left
+        self.bodies.push(SubBody::new(cx + 0.8, cy - 3.0, r, mat));  // 2: head right
+        // Shoulders & torso
+        self.bodies.push(SubBody::new(cx - 1.8, cy - 1.8, r, mat));  // 3: left shoulder
+        self.bodies.push(SubBody::new(cx, cy - 1.8, r, mat));        // 4: center torso
+        self.bodies.push(SubBody::new(cx + 1.8, cy - 1.8, r, mat));  // 5: right shoulder
+        // Lower torso
+        self.bodies.push(SubBody::new(cx - 1.0, cy - 0.5, r, mat));  // 6: left torso
+        self.bodies.push(SubBody::new(cx + 1.0, cy - 0.5, r, mat));  // 7: right torso
+        // Arms
+        self.bodies.push(SubBody::new(cx - 3.0, cy - 1.0, r, mat));  // 8: left hand
+        self.bodies.push(SubBody::new(cx + 3.0, cy - 1.0, r, mat));  // 9: right hand
+        // Hips
+        self.bodies.push(SubBody::new(cx - 1.2, cy + 0.8, r, mat));  // 10: left hip
+        self.bodies.push(SubBody::new(cx + 1.2, cy + 0.8, r, mat));  // 11: right hip
+        // Legs
+        self.bodies.push(SubBody::new(cx - 1.2, cy + 2.2, r, mat));  // 12: left leg
+        self.bodies.push(SubBody::new(cx + 1.2, cy + 2.2, r, mat));  // 13: right leg
+        // Feet
+        self.bodies.push(SubBody::new(cx - 1.5, cy + 3.5, r, MaterialId::Bone)); // 14: left foot
+        self.bodies.push(SubBody::new(cx + 1.5, cy + 3.5, r, MaterialId::Bone)); // 15: right foot
 
         let s = self.constraint_stiffness;
         let mk = |a: usize, b: usize, len: f32| Constraint::new(a, b, len, s);
 
-        self.constraints.push(mk(0, 1, 1.0));
-        self.constraints.push(mk(1, 2, 0.9));
-        self.constraints.push(mk(1, 3, 0.9));
-        self.constraints.push(mk(2, 4, 0.9));
-        self.constraints.push(mk(3, 5, 0.9));
-        self.constraints.push(mk(1, 6, 2.0));
-        self.constraints.push(mk(4, 5, 1.0));
-        self.constraints.push(mk(4, 6, 1.1));
-        self.constraints.push(mk(5, 6, 1.1));
+        // Head internal
+        self.constraints.push(mk(0, 1, 0.9));
+        self.constraints.push(mk(0, 2, 0.9));
+        self.constraints.push(mk(1, 2, 1.6));
+        // Head to shoulders
+        self.constraints.push(mk(1, 3, 1.3));
+        self.constraints.push(mk(2, 5, 1.3));
+        // Shoulders to torso
+        self.constraints.push(mk(3, 4, 1.8));
+        self.constraints.push(mk(4, 5, 1.8));
+        self.constraints.push(mk(3, 6, 1.6));
+        self.constraints.push(mk(5, 7, 1.6));
+        // Torso center
+        self.constraints.push(mk(4, 6, 1.3));
+        self.constraints.push(mk(4, 7, 1.3));
+        self.constraints.push(mk(6, 7, 2.0));
+        // Arms
+        self.constraints.push(mk(3, 8, 1.5));
+        self.constraints.push(mk(5, 9, 1.5));
+        // Hips
+        self.constraints.push(mk(6, 10, 1.5));
+        self.constraints.push(mk(7, 11, 1.5));
+        self.constraints.push(mk(10, 11, 2.4));
+        // Legs
+        self.constraints.push(mk(10, 12, 1.4));
+        self.constraints.push(mk(11, 13, 1.4));
+        // Feet
+        self.constraints.push(mk(12, 14, 1.5));
+        self.constraints.push(mk(13, 15, 1.5));
+        // Cross-bracing for stability
+        self.constraints.push(mk(0, 4, 1.7));
+        self.constraints.push(mk(6, 10, 1.3));
+        self.constraints.push(mk(7, 11, 1.3));
     }
 
     pub fn apply_fire_damage(&mut self) {
