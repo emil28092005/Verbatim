@@ -63,6 +63,69 @@ Game loop: fixed 60Hz timestep
 - Projectile travels and deals damage on hit
 - Goblin AI moves toward player
 
+### Phase 1.5: UI Layer (Non-Destructive Overlay)
+
+**Goal: visual UI elements that overlay the world without modifying game state**
+
+Architecture: a `UiLayer` is a separate render surface that composites on top of the world grid.
+The world grid, entities, and all game state remain untouched — UI is purely visual.
+Both terminal and Vulkan renderers composite the UI layer after drawing the world.
+
+```
+Render pipeline per frame:
+  1. Draw world grid (materials, entities)     ← source of truth, untouched
+  2. Composite UI layer on top                 ← visual only, read-only access to state
+  3. Present to screen
+```
+
+- [ ] `UiLayer` struct: sparse map of (screen_x, screen_y) → (char, fg_color, bg_color)
+  - UI elements write to this map, not to the grid
+  - Renderer composites: if UiLayer has a cell at (x,y), it overrides the world cell visually
+  - World state is never modified by UI
+- [ ] Health bar: colored bar above player entity, shows current/max HP
+  - ████░░░░ style, colored green→yellow→red by HP ratio
+  - Positioned relative to player's screen position, scrolls with camera
+- [ ] Entity labels: small text above/below entities (name, level for RPG)
+- [ ] Status effect icons: burning 🔥, poisoned, frozen — shown next to entity
+- [ ] HUD bar (bottom of screen, non-destructive):
+  - HP: ████████░░ 80/100
+  - Material brush: [Sand] (current selected)
+  - Tick: 1234  Depth: 1
+  - FPS counter (debug mode)
+- [ ] Tooltip on hover: when cursor is over a cell, show material name + temperature
+- [ ] Message log (top of screen, scrolling): "Goblin hits you for 10 damage"
+  - Last N messages, older ones fade (dimmer color)
+- [ ] Inventory overlay (toggle with 'i'): semi-transparent panel, doesn't modify world
+  - List of items, selected highlight, weight/value display
+  - Opens/closes without affecting simulation
+- [ ] Menu system (pause, settings, save/load): full-screen overlay with border
+  - Game loop pauses (or continues in background), UI captures input
+- [ ] Minimap (corner of screen): compressed world view, explored areas only
+  - Each minimap cell = 5x5 world cells, averaged material color
+  - Player position marker, entity dots
+- [ ] Crosshair/targeting: when aiming projectiles, shows trajectory preview
+- [ ] Damage numbers: floating text above entities when hit, rises and fades
+- [ ] Screen-edge indicators: arrows pointing to off-screen entities of interest
+
+**Key principle: UI layer NEVER writes to grid, entities, or any game state.
+It reads state and renders visuals on top. This keeps the source of truth clean
+and AI-observable (pipe protocol exports world state, not UI state).**
+
+**Terminal implementation:** UiLayer is a `HashMap<(u16, u16), (char, Color, Color)>`.
+Terminal renderer draws world cells first, then overwrites positions where UiLayer has entries.
+
+**Vulkan implementation:** Separate render pass after world pass. UI elements as
+instanced quads with UI texture coordinates. Transparent background, drawn on top.
+
+**Tests needed:**
+- UiLayer does not modify any grid cell
+- Health bar appears at correct screen position relative to player
+- HUD bar shows correct HP and brush name
+- Message log appends and fades old messages
+- Inventory overlay toggles without affecting world state
+- Minimap renders explored areas correctly
+- Pipe protocol state does not include UI elements (world only)
+
 ### Phase 2: World & Exploration
 
 **Goal: explorable world with depth and variety**
@@ -255,6 +318,7 @@ Browser (WASM + Canvas)  ←WebSocket→  Rust Server (tokio + game engine)
 | Seeded RNG for determinism | Replay system, reproducible tests |
 | JSON pipe protocol | Any AI agent can connect, no vision needed |
 | Single binary with embedded font | Portable, no external assets |
+| UI layer is non-destructive overlay | Visual only, never modifies game state, keeps source of truth clean |
 
 ### Open Questions
 
@@ -279,6 +343,14 @@ src/
   lib.rs               # Library root
   game.rs              # Game loop, world gen, entity management
   input.rs             # Keyboard input → Action enum
+  ui/
+    mod.rs             # UiLayer trait, compositing
+    hud.rs             # Health bar, brush indicator, tick/fps
+    messages.rs        # Scrolling message log
+    inventory_ui.rs    # Inventory overlay panel
+    menu.rs            # Pause/settings/save-load menu
+    minimap.rs         # Compressed world minimap
+    tooltips.rs        # Cell hover tooltips, damage numbers
   world/
     cell.rs            # Cell struct, MaterialId enum
     material.rs        # Material properties registry
@@ -368,6 +440,7 @@ assets/
 |-----------|---------|--------|
 | 0.1 (done) | Core engine: CA, rigid, ragdoll, terminal, AI pipe | June 2026 |
 | 0.2 | Combat, goblin AI, projectiles, corpse decomposition | July 2026 |
+| 0.25 | UI layer: health bar, HUD, message log, minimap, inventory overlay | July 2026 |
 | 0.3 | Chunks, biomes, dungeon gen, camera zoom | August 2026 |
 | 0.4 | RPG layer: stats, inventory, mutations, XP | October 2026 |
 | 0.5 | Vulkan renderer + graphics layers (lighting, particles, textures) | December 2026 |
