@@ -344,7 +344,6 @@ impl GraphicsRenderer {
                     [40, 40, 40, 255]
                 } else {
                     let cell = grid.get(wx, wy);
-                    let mat = reg.get(cell.material);
                     if cell.is_empty() {
                         bg_default
                     } else {
@@ -352,7 +351,7 @@ impl GraphicsRenderer {
                             let r = 200u8.saturating_add(cell.variant / 2);
                             [r, 60, 20, 255]
                         } else {
-                            [mat.color_fg.0, mat.color_fg.1, mat.color_fg.2, 255]
+                            [cell.fg[0], cell.fg[1], cell.fg[2], 255]
                         }
                     }
                 };

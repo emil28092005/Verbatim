@@ -86,26 +86,18 @@ impl Renderer for TerminalRenderer {
                     continue;
                 }
                 let cell = grid.get(wx, wy);
-                let mat = reg.get(cell.material);
                 let idx = dy * self.width + dx;
                 if cell.is_empty() {
-                    frame[idx] = (' ', mat.color_fg, mat.color_bg);
+                    frame[idx] = (' ', (cell.fg[0], cell.fg[1], cell.fg[2]), (cell.bg[0], cell.bg[1], cell.bg[2]));
                 } else {
-                    let ch = if cell.material == MaterialId::Lava {
-                        if cell.variant % 2 == 0 { '#' } else { '#' }
-                    } else if cell.material == MaterialId::Water {
-                        if cell.variant % 3 == 0 { '~' } else { '~' }
-                    } else {
-                        mat.display_char
-                    };
+                    let ch = cell.material.display_char();
                     let fg = if cell.material == MaterialId::Lava {
-                        let flicker = cell.variant;
-                        let r = 200u8.saturating_add(flicker / 2);
+                        let r = 200u8.saturating_add(cell.variant / 2);
                         (r, 60, 20)
                     } else {
-                        mat.color_fg
+                        (cell.fg[0], cell.fg[1], cell.fg[2])
                     };
-                    frame[idx] = (ch, fg, mat.color_bg);
+                    frame[idx] = (ch, fg, (cell.bg[0], cell.bg[1], cell.bg[2]));
                 }
             }
         }

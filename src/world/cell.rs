@@ -67,6 +67,8 @@ pub struct Cell {
     pub temp: f32,
     pub updated_this_tick: bool,
     pub variant: u8,
+    pub fg: [u8; 3],
+    pub bg: [u8; 3],
 }
 
 impl Cell {
@@ -76,10 +78,14 @@ impl Cell {
             temp: 20.0,
             updated_this_tick: false,
             variant: 0,
+            fg: [15, 15, 20],
+            bg: [10, 10, 15],
         }
     }
 
     pub fn new(material: MaterialId) -> Self {
+        let reg = MaterialRegistry::instance();
+        let mat = reg.get(material);
         let temp = match material {
             MaterialId::Lava => 1500.0,
             MaterialId::Fire => 800.0,
@@ -92,6 +98,8 @@ impl Cell {
             temp,
             updated_this_tick: false,
             variant: rand_u8(),
+            fg: [mat.color_fg.0, mat.color_fg.1, mat.color_fg.2],
+            bg: [mat.color_bg.0, mat.color_bg.1, mat.color_bg.2],
         }
     }
 
