@@ -10,37 +10,44 @@
 | System | Status | Details |
 |--------|--------|---------|
 | Cellular automaton | Working | 14 materials: sand, water, stone, lava, wood, flesh, bone, steam, fire, acid, smoke, grass, dirt, empty |
-| Rigid entities | Working | AABB collider, sliding on surfaces, 27 sub-bodies (5x5 + arm), player + goblins |
+| Rigid entities | Working | AABB collider, slope stepping, 27 sub-bodies (5x5 + arm), player + goblins |
 | Ragdoll corpses | Working | Verlet constraints, death = rigid→ragdoll transition with inherited velocity |
 | Terminal renderer | Working | Full terminal size, ANSI truecolor, diff-based rendering |
-| Window renderer (Vulkan ASCII) | Working | ash + winit, instanced rendering, glyph atlas, 60 FPS |
-| Softbuffer fallback | Working | CPU pixel buffer if Vulkan unavailable, winit input (layout-agnostic) |
+| ASCII renderer (Vulkan) | Working | ash + winit, instanced rendering, glyph atlas, 16x16 square cells, adaptive viewport |
+| Graphics renderer (Vulkan) | Working | ash + winit, colored cells (no glyphs), each material = unique base color, adaptive viewport |
 | AI pipe protocol | Working | JSON stdin/stdout, 16 commands, full state export |
 | Test framework | Working | 109 Rust tests + 14 JSON scenarios, all passing |
 | Replay system | Working | Seeded determinism, record/playback, play_until_tick |
 | World generation | Basic | Sinusoidal terrain, water/lava/acid pools, wood structure, sand dune, stone wall |
 | Cross-platform | Working | Windows/Linux/macOS via winit + ash_window, no platform-specific code |
+| Adaptive viewport | Working | Window resize → more/fewer cells visible, cells stay 16x16 pixels |
+| Per-cell color (reality layer) | Working | Each cell stores fg/bg color inline, no registry lookup in render path |
 
 ### Architecture
 
 ```
-Source of truth: text grid (250x250, char + material + temp)
+Source of truth: text grid (250x250, Cell = material + temp + fg + bg + variant)
 
 Three entity types:
   1. Cellular  — materials in grid, per-cell CA rules
-  2. Rigid     — alive entities, AABB collider, single velocity
+  2. Rigid     — alive entities, AABB collider, slope stepping, single velocity
   3. Ragdoll   — corpses, loose Verlet bodies, independent physics
 
 Game loop: fixed 60Hz timestep
-  Physics tick: CA step → rigid update → ragdoll update → damage
-  Render: terminal (ANSI) or pipe (JSON) or headless (file dump)
+  Physics tick: CA step → rigid update (slope step) → ragdoll update → damage
+  Render: terminal (ANSI) / ascii (Vulkan glyphs) / graphics (Vulkan cells) / pipe (JSON) / headless (file)
+
+Three render modes:
+  --mode terminal  → pure ANSI ASCII in terminal
+  --mode ascii     → Vulkan window with ASCII characters (glyph atlas)
+  --mode graphics  → Vulkan window with colored cells (no glyphs, material base colors)
 ```
 
 ### Numbers
 
-- ~6500 lines Rust
+- ~5964 lines Rust
 - 109 integration tests, 14 JSON scenarios
-- 30+ git commits
+- 40+ git commits
 - 0 compiler warnings (excluding winit deprecation notices)
 - Cross-platform: Windows/Linux/macOS
 
@@ -174,22 +181,21 @@ instanced quads with UI texture coordinates. Transparent background, drawn on to
 - XP accumulation triggers level up
 - Status effect ticks deal correct damage
 
-### Phase 4: Render Modes — ASCII (Vulkan) + Graphics Mode
+### Phase 4: Render Modes — ASCII (Vulkan) + Graphics Mode (DONE)
 
 **Goal: two render modes, same source of truth, cross-platform**
 
 Two distinct render modes, both GPU-accelerated via Vulkan:
 
-**Mode 1: `--mode window` (ASCII mode, DONE)**
+**Mode 1: `--mode ascii` (ASCII mode, DONE)**
 - Vulkan instanced rendering of ASCII characters
 - Glyph atlas (DejaVu Sans Mono) → R8_UNORM texture
 - Each cell = one instance: grid position + atlas UV + fg/bg color
-- One `vkCmdDrawIndexed` for 8000 cells (160x50)
+- One `vkCmdDrawIndexed` for all cells
 - Pure ASCII aesthetic — characters with flat colors
-- This is the current Vulkan renderer, renamed from `--mode vulkan` to `--mode window`
 - Cross-platform: Windows/Linux/macOS via ash_window
 
-**Mode 2: `--mode graphics` (Graphics mode, FUTURE)**
+**Mode 2: `--mode graphics` (Graphics mode, DONE)**
 - Same Vulkan pipeline, but instead of ASCII characters, each material
   gets a unique base color filling the entire cell (no glyph)
 - Each unique symbol/material → distinct base color (not considering lighting yet)
@@ -200,14 +206,17 @@ Two distinct render modes, both GPU-accelerated via Vulkan:
 - Foundation for Phase 4b (lighting, particles, textures will be added on top)
 - Lighting will modulate base colors later (Phase 4b)
 
-**Current status (Phase 4 ASCII mode):**
+**Current status:**
 - [x] ash (Vulkan) bootstrap: instance, device, swapchain, render pass
 - [x] Glyph atlas: DejaVu Sans Mono rasterized at startup via fontdue
 - [x] Instanced rendering: one draw call for all visible cells
 - [x] Persistent mapped buffer for instance data
-- [x] Camera: follows player center
+- [x] Camera: follows player center, adaptive viewport on resize
 - [x] Single binary: font embedded via include_bytes!
 - [x] Cross-platform: ash_window::enumerate_required_extensions
+- [x] Per-cell color: fg/bg stored in Cell, no registry lookup in render path
+- [x] Square cells: 16x16 pixels, uniform grid
+- [x] GpuRenderer trait: generic run_gpu_mode<R> for both renderers
 - [ ] Dirty cell tracking: only update changed cells in instance buffer
 - [ ] Camera zoom: +/- keys to change viewport scale
 
@@ -349,8 +358,12 @@ Browser (WASM + Canvas)  ←WebSocket→  Rust Server (tokio + game engine)
 | JSON pipe protocol | Any AI agent can connect, no vision needed |
 | Single binary with embedded font | Portable, no external assets |
 | UI layer is non-destructive overlay | Visual only, never modifies game state, keeps source of truth clean |
-| Two render modes: ASCII + Graphics | ASCII = characters with flat colors (done), Graphics = colored cells (future) |
+| Three render modes: terminal + ascii + graphics | terminal=ANSI, ascii=Vulkan glyphs, graphics=Vulkan colored cells |
+| Per-cell color in reality layer | Each Cell stores fg/bg inline, no registry lookup in render path |
+| Square cells (16x16 pixels) | Uniform grid, adaptive viewport on window resize |
+| Slope stepping collision | Entities walk up 1-cell steps without jumping |
 | Layout-agnostic input via winit PhysicalKey | Works on any keyboard layout (Russian, Arabic, etc.) |
+| GpuRenderer trait | Unifies ascii + graphics renderers behind generic run_gpu_mode<R>() |
 
 ### Cross-Platform Support
 
@@ -361,7 +374,6 @@ All dependencies are cross-platform. No platform-specific code in the codebase.
 | winit | ✅ | ✅ | ✅ | Window creation, input (PhysicalKey = layout-agnostic) |
 | ash | ✅ | ✅ | ✅ | Vulkan bindings (macOS via MoltenVK) |
 | ash-window | ✅ | ✅ | ✅ | Auto-selects surface extension per platform |
-| softbuffer | ✅ | ✅ | ✅ | CPU pixel buffer fallback (no Vulkan needed) |
 | fontdue | ✅ | ✅ | ✅ | Pure Rust font rasterization |
 | crossterm | ✅ | ✅ | ✅ | Terminal I/O (for --mode terminal) |
 | serde/serde_json | ✅ | ✅ | ✅ | JSON for pipe protocol, scenarios, replay |
@@ -370,8 +382,8 @@ All dependencies are cross-platform. No platform-specific code in the codebase.
 **Render mode availability:**
 | Mode | Windows | Linux | macOS | Fallback |
 |------|---------|-------|-------|----------|
-| `--mode window` (Vulkan ASCII) | ✅ | ✅ | ✅ (MoltenVK) | → softbuffer if Vulkan unavailable |
-| `--mode graphics` (Vulkan cells) | ✅ | ✅ | ✅ (MoltenVK) | → softbuffer if Vulkan unavailable |
+| `--mode ascii` (Vulkan glyphs) | ✅ | ✅ | ✅ (MoltenVK) | → terminal if Vulkan unavailable |
+| `--mode graphics` (Vulkan cells) | ✅ | ✅ | ✅ (MoltenVK) | → terminal if Vulkan unavailable |
 | `--mode terminal` (ANSI) | ✅ | ✅ | ✅ | Always available |
 | `--mode pipe` (JSON) | ✅ | ✅ | ✅ | Always available |
 | `--mode headless` (file dump) | ✅ | ✅ | ✅ | Always available |
@@ -437,10 +449,9 @@ src/
   render/
     mod.rs             # Renderer trait
     terminal.rs        # Terminal renderer (ANSI)
-    window.rs          # ASCII Vulkan renderer (glyph atlas + instanced)
+    vulkan.rs          # ASCII Vulkan renderer (glyph atlas + instanced)
+    graphics.rs        # Graphics Vulkan renderer (colored cells, no glyphs)
     window_input.rs    # winit PhysicalKey input (layout-agnostic)
-    vulkan.rs          # [legacy] old Vulkan impl, merged into window.rs
-    graphics.rs        # [Phase 4] Graphics mode renderer (colored cells, no glyphs)
     lighting.rs        # [Phase 4b] compute shader lighting
     particles.rs       # [Phase 4b] GPU particle system
     textures.rs        # [Phase 4b] procedural material textures
@@ -479,7 +490,7 @@ assets/
 | Pipe protocol latency | < 1ms per command | ~0.1ms |
 | RL state export | < 0.5ms per frame | N/A |
 | WebSocket state sync | < 50ms per frame | N/A |
-| Binary size (release) | < 10MB | ~6MB (debug, no Vulkan) |
+| Binary size (release) | < 10MB | ~8MB (debug, with Vulkan) |
 
 ---
 
@@ -512,12 +523,13 @@ assets/
 | Milestone | Content | Target |
 |-----------|---------|--------|
 | 0.1 (done) | Core engine: CA, rigid, ragdoll, terminal, AI pipe | June 2026 |
-| 0.2 | Combat, goblin AI, projectiles, corpse decomposition | July 2026 |
-| 0.25 | UI layer: health bar, HUD, message log, minimap, inventory overlay | July 2026 |
-| 0.3 | Chunks, biomes, dungeon gen, camera zoom | August 2026 |
-| 0.4 | RPG layer: stats, inventory, mutations, XP | October 2026 |
-| 0.5 | Graphics mode + lighting/particles/textures (Phase 4b) | December 2026 |
-| 0.6 | Multi-layer world: air, pressure, temperature, light as separate grids | Feb 2027 |
-| 0.7 | AI agent: LLM + RL bridge, agent recording | April 2027 |
-| 0.8 | Web arena: WASM render, WebSocket server, multiplayer, training pipeline | June 2027 |
+| 0.2 (done) | Vulkan ASCII + graphics renderers, adaptive viewport, per-cell color, slope stepping | June 2026 |
+| 0.3 | Combat, goblin AI, projectiles, corpse decomposition | July 2026 |
+| 0.35 | UI layer: health bar, HUD, message log, minimap, inventory overlay | July 2026 |
+| 0.4 | Chunks, biomes, dungeon gen, camera zoom | August 2026 |
+| 0.5 | RPG layer: stats, inventory, mutations, XP | October 2026 |
+| 0.6 | Lighting/particles/textures (Phase 4b) | December 2026 |
+| 0.7 | Multi-layer world: air, pressure, temperature, light as separate grids | Feb 2027 |
+| 0.8 | AI agent: LLM + RL bridge, agent recording | April 2027 |
+| 0.9 | Web arena: WASM render, WebSocket server, multiplayer, training pipeline | June 2027 |
 | 1.0 | Full vertical slice: content, balance, death screen, trained AI agents | Q3 2027 |
