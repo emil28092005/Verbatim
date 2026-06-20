@@ -39,21 +39,16 @@ struct PushConstants {
 pub struct VulkanRenderer {
     grid_w: usize,
     grid_h: usize,
-    pixel_w: u32,
-    pixel_h: u32,
 
     entry: ash::Entry,
     instance: ash::Instance,
     surface: vk::SurfaceKHR,
-    physical_device: vk::PhysicalDevice,
     device: ash::Device,
     graphics_queue: vk::Queue,
-    queue_family: u32,
 
     swapchain_loader: ash::khr::swapchain::Device,
     swapchain: vk::SwapchainKHR,
     swapchain_image_views: Vec<vk::ImageView>,
-    swapchain_format: vk::Format,
     swapchain_extent: vk::Extent2D,
 
     render_pass: vk::RenderPass,
@@ -148,11 +143,11 @@ impl VulkanRenderer {
         update_descriptor_set(&device, descriptor_set, atlas_view, atlas_sampler);
 
         Ok(Self {
-            grid_w, grid_h, pixel_w, pixel_h,
-            entry, instance, surface, physical_device, device,
-            graphics_queue, queue_family,
+            grid_w, grid_h,
+            entry, instance, surface, device,
+            graphics_queue,
             swapchain_loader, swapchain, swapchain_image_views,
-            swapchain_format, swapchain_extent,
+            swapchain_extent,
             render_pass, pipeline, pipeline_layout, framebuffers,
             command_pool, command_buffers,
             image_available, render_finished, in_flight, frame_index: 0,
@@ -422,7 +417,7 @@ fn create_device(instance: &ash::Instance, pd: vk::PhysicalDevice, qf: u32) -> R
 }
 
 fn create_swapchain(
-    device: &ash::Device,
+    _device: &ash::Device,
     sl: &ash::khr::swapchain::Device,
     surface_loader: &ash::khr::surface::Instance,
     pd: vk::PhysicalDevice,
