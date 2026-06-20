@@ -202,6 +202,28 @@ fn player_info(game: &Game) -> String {
 }
 
 fn run_window_mode() {
+    use winit::event::{Event, WindowEvent};
+    use winit::event_loop::{EventLoop, ControlFlow};
+    use winit::window::Window;
+    
+    use std::time::{Duration, Instant};
+
+    use std::sync::Arc;
+
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let window = event_loop.create_window(
+        Window::default_attributes()
+            .with_title("Verbatim")
+            .with_inner_size(winit::dpi::LogicalSize::new(160 * 8, 50 * 16))
+    ).expect("Failed to create window");
+    let window = Arc::new(window);
+
+    let display_handle = event_loop.owned_display_handle();
+    let context = softbuffer::Context::new(display_handle)
+        .expect("Failed to create softbuffer context");
+    let mut surface = softbuffer::Surface::new(&context, Arc::clone(&window))
+        .expect("Failed to create surface");
+
     let mut renderer = WindowRenderer::new();
     let mut game = Game::new();
     game.init_world();
@@ -210,82 +232,116 @@ fn run_window_mode() {
     let vw = renderer.width();
     let vh = renderer.height();
 
-    use std::time::{Duration, Instant};
     let fixed_dt = Duration::from_millis(16);
     let mut last_time = Instant::now();
     let mut accumulator = Duration::ZERO;
 
-    while renderer.is_open() && game.running {
-        let now = Instant::now();
-        let frame_time = now.duration_since(last_time);
-        last_time = now;
-        accumulator += frame_time;
+    let mut running = true;
 
-        while accumulator >= fixed_dt {
-            game.fixed_update();
-            accumulator -= fixed_dt;
-        }
+    event_loop.run(|event, ctrl| {
+        ctrl.set_control_flow(ControlFlow::Poll);
 
-        let keys = renderer.get_keys_down();
-        input.update(&keys);
+        match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        running = false;
+                        ctrl.exit();
+                    }
+                    WindowEvent::KeyboardInput { event: key_event, .. } => {
+                        input.on_key_event(key_event.physical_key, key_event.state);
+                    }
+                    _ => {}
+                }
+            }
+            Event::AboutToWait => {
+                if !running {
+                    ctrl.exit();
+                    return;
+                }
 
-        if input.quit {
-            break;
-        }
+                let now = Instant::now();
+                let frame_time = now.duration_since(last_time);
+                last_time = now;
+                accumulator += frame_time;
 
-        if input.jump {
-            let on_ground = game.check_on_ground();
-            game.player.jump(&mut game.entities, on_ground);
-        }
+                let mut steps = 0;
+                while accumulator >= fixed_dt && steps < 5 {
+                    game.fixed_update();
+                    accumulator -= fixed_dt;
+                    steps += 1;
+                }
 
-        if input.left {
-            game.player.move_left(&mut game.entities);
-        } else if input.right {
-            game.player.move_right(&mut game.entities);
-        } else {
-            game.player.stop_horizontal(&mut game.entities);
-        }
+                input.update();
 
-        if input.cam_left { game.cam_x -= 3; }
-        if input.cam_right { game.cam_x += 3; }
-        if input.cam_up { game.cam_y -= 3; }
-        if input.cam_down { game.cam_y += 3; }
+                if input.quit {
+                    running = false;
+                    ctrl.exit();
+                    return;
+                }
 
-        if let Some(brush_id) = input.paint {
-            let mat = match brush_id {
-                1 => MaterialId::Sand,
-                2 => MaterialId::Water,
-                3 => MaterialId::Stone,
-                4 => MaterialId::Lava,
-                5 => MaterialId::Wood,
-                6 => MaterialId::Acid,
-                7 => MaterialId::Grass,
-                8 => MaterialId::Dirt,
-                9 => MaterialId::Fire,
-                0 => MaterialId::Flesh,
-                99 => MaterialId::Empty,
-                _ => continue,
-            };
-            let cx = game.cam_x + (vw as i32 / 2);
-            let cy = game.cam_y + (vh as i32 / 2);
-            let r = 2;
-            for dy in -r..=r {
-                for dx in -r..=r {
-                    if dx * dx + dy * dy <= r * r + 1 {
-                        if mat == MaterialId::Empty {
-                            game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
-                        } else {
-                            game.grid.set_material(cx + dx, cy + dy, mat);
+                if input.jump {
+                    let on_ground = game.check_on_ground();
+                    game.player.jump(&mut game.entities, on_ground);
+                }
+
+                if input.left {
+                    game.player.move_left(&mut game.entities);
+                } else if input.right {
+                    game.player.move_right(&mut game.entities);
+                } else {
+                    game.player.stop_horizontal(&mut game.entities);
+                }
+
+                if input.cam_left { game.cam_x -= 3; }
+                if input.cam_right { game.cam_x += 3; }
+                if input.cam_up { game.cam_y -= 3; }
+                if input.cam_down { game.cam_y += 3; }
+
+                if let Some(brush_id) = input.paint {
+                    let mat = match brush_id {
+                        1 => MaterialId::Sand,
+                        2 => MaterialId::Water,
+                        3 => MaterialId::Stone,
+                        4 => MaterialId::Lava,
+                        5 => MaterialId::Wood,
+                        6 => MaterialId::Acid,
+                        7 => MaterialId::Grass,
+                        8 => MaterialId::Dirt,
+                        9 => MaterialId::Fire,
+                        0 => MaterialId::Flesh,
+                        99 => MaterialId::Empty,
+                        _ => MaterialId::Empty,
+                    };
+                    let cx = game.cam_x + (vw as i32 / 2);
+                    let cy = game.cam_y + (vh as i32 / 2);
+                    let r = 2;
+                    for dy in -r..=r {
+                        for dx in -r..=r {
+                            if dx * dx + dy * dy <= r * r + 1 {
+                                if mat == MaterialId::Empty {
+                                    game.grid.set(cx + dx, cy + dy, verbatim::world::cell::Cell::empty());
+                                } else {
+                                    game.grid.set_material(cx + dx, cy + dy, mat);
+                                }
+                            }
                         }
                     }
                 }
+
+                let (px, py) = game.player.center(&game.entities);
+                game.cam_x = px as i32 - (vw as i32 / 2);
+                game.cam_y = py as i32 - (vh as i32 / 2);
+
+                renderer.render_to_buffer(&game.grid, &game.entities, game.cam_x, game.cam_y);
+
+                let mut buffer = surface.buffer_mut().expect("buffer");
+                let pixels = renderer.pixels();
+                let len = buffer.len().min(pixels.len());
+                buffer[..len].copy_from_slice(&pixels[..len]);
+                buffer.present().expect("present");
             }
+            _ => {}
         }
-
-        let (px, py) = game.player.center(&game.entities);
-        game.cam_x = px as i32 - (vw as i32 / 2);
-        game.cam_y = py as i32 - (vh as i32 / 2);
-
-        renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
-    }
+    }).expect("event loop error");
 }
