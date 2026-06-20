@@ -99,7 +99,14 @@ impl VulkanRenderer {
         let pixel_h = (grid_h as u32) * CHAR_H;
 
         let entry = unsafe { ash::Entry::load().map_err(|e| format!("Vulkan load: {e}"))? };
-        let instance = create_instance(&entry)?;
+
+        // Get required instance extensions from the window's display handle (platform-agnostic)
+        use raw_window_handle::HasDisplayHandle;
+        let dh = window.display_handle().map_err(|e| format!("display_handle: {e}"))?;
+        let required_exts = ash_window::enumerate_required_extensions(dh.as_raw())
+            .map_err(|e| format!("enumerate_required_extensions: {e:?}"))?;
+
+        let instance = create_instance(&entry, required_exts)?;
         let surface = create_surface(&entry, &instance, &window)?;
 
         let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
@@ -342,17 +349,14 @@ impl Drop for VulkanRenderer {
     }
 }
 
-fn create_instance(entry: &ash::Entry) -> Result<ash::Instance, String> {
+fn create_instance(entry: &ash::Entry, required_exts: &'static [*const std::ffi::c_char]) -> Result<ash::Instance, String> {
     let app_name = CString::new("Verbatim").unwrap();
     let app_info = vk::ApplicationInfo::default()
         .application_name(&app_name)
         .api_version(vk::API_VERSION_1_2);
 
-    let mut ext_names: Vec<CString> = vec![
-        CString::new("VK_KHR_surface").unwrap(),
-        CString::new("VK_KHR_xlib_surface").unwrap(),
-        CString::new("VK_KHR_wayland_surface").unwrap(),
-    ];
+    // Start with platform-required extensions (from ash_window)
+    let mut ext_ptrs: Vec<*const i8> = required_exts.iter().map(|&p| p as *const i8).collect();
 
     // Add debug utils extension if available
     let avail_exts = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
@@ -361,10 +365,9 @@ fn create_instance(entry: &ash::Entry) -> Result<ash::Instance, String> {
         name.to_str().unwrap_or("") == "VK_EXT_debug_utils"
     });
     if has_debug_utils {
-        ext_names.push(CString::new("VK_EXT_debug_utils").unwrap());
+        ext_ptrs.push(b"VK_EXT_debug_utils\0".as_ptr() as *const i8);
     }
 
-    let ext_ptrs: Vec<*const i8> = ext_names.iter().map(|n| n.as_ptr()).collect();
     let create_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
         .enabled_extension_names(&ext_ptrs);
