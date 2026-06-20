@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use crate::ai::state::material_from_name;
 use crate::ai::state::parse_entity_kind;
-use crate::entity::EntityKind;
 use crate::game::Game;
-use crate::world::cell::{Cell, MaterialId};
+use crate::world::cell::Cell;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]

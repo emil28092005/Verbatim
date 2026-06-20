@@ -1,6 +1,5 @@
 use crate::world::cell::{Cell, MaterialId};
 use crate::world::grid::Grid;
-use crate::world::material::MaterialRegistry;
 
 pub struct CellularAutomaton {
     tick: u64,

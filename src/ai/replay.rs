@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
 use crate::ai::session::GameSession;
-use std::io::Write;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReplayRecording {

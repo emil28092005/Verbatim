@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
 use crate::ai::session::GameSession;
-use crate::ai::state::{GameState, material_from_name};
+use crate::ai::state::GameState;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Scenario {

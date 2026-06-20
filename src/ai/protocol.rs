@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
 use crate::ai::session::GameSession;
-use crate::ai::scenario::{run_scenario, Scenario, format_results, load_scenario, run_all_scenarios};
+use crate::ai::scenario::{run_scenario, format_results, load_scenario, run_all_scenarios};
 use crate::ai::state::GameState;
 use std::io::{self, BufRead, Write};
 
