@@ -354,9 +354,7 @@ impl Game {
 
         let mut nx = cx;
         let mut ny = cy;
-        // Horizontal: direct velocity, no damping (vector movement)
         let mut nvx = cvx;
-        // Vertical: gravity + light damping for natural fall
         let mut nvy = cvy * 0.99;
         nvy += gravity;
 
@@ -366,25 +364,28 @@ impl Game {
             nvy = nvy / v_mag * max_vel;
         }
 
-        // Move X then resolve X collisions
+        // Step 1: Try horizontal movement with slope stepping
         nx += nvx;
-        let (resolved_x, hit_wall_x) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx);
-        nx = resolved_x;
-        if hit_wall_x {
-            if nvx > 0.0 { nvx = 0.0; }
-            else if nvx < 0.0 { nvx = 0.0; }
+        if self.aabb_overlaps_solid(nx, ny, half_w, half_h) {
+            // Try stepping up 1 cell
+            let step = 1.0;
+            if !self.aabb_overlaps_solid(nx, ny - step, half_w, half_h) {
+                // Can step up — snap to top of the obstacle
+                ny -= step;
+            } else {
+                // Blocked — resolve X
+                let (resolved_x, hit) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx);
+                nx = resolved_x;
+                if hit { nvx = 0.0; }
+            }
         }
 
-        // Move Y then resolve Y collisions
+        // Step 2: Vertical movement
         ny += nvy;
         let (resolved_y, hit_floor, hit_ceiling) = self.resolve_aabb_y(idx, nx, ny, half_w, half_h, nvy > 0.0);
         ny = resolved_y;
-        if hit_floor {
-            nvy = 0.0;
-        }
-        if hit_ceiling {
-            nvy = 0.0;
-        }
+        if hit_floor { nvy = 0.0; }
+        if hit_ceiling { nvy = 0.0; }
 
         // Check material contacts
         let (touching_lava, touching_fire, touching_acid, in_liquid) = {
@@ -443,6 +444,35 @@ impl Game {
                 }
             }
         }
+    }
+
+    fn aabb_overlaps_solid(&self, cx: f32, cy: f32, hw: f32, hh: f32) -> bool {
+        let grid = &self.grid;
+        let left = cx - hw;
+        let right = cx + hw;
+        let top = cy - hh;
+        let bottom = cy + hh;
+
+        let min_x = left.floor() as i32;
+        let max_x = right.ceil() as i32;
+        let min_y = top.floor() as i32;
+        let max_y = bottom.ceil() as i32;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                if !grid.in_bounds(x, y) { continue; }
+                let cell = grid.get(x, y);
+                if !cell.is_solid() { continue; }
+                let cl = x as f32;
+                let cr = (x + 1) as f32;
+                let ct = y as f32;
+                let cb = (y + 1) as f32;
+                if right > cl && left < cr && bottom > ct && top < cb {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn resolve_aabb_x(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, vx: f32) -> (f32, bool) {

@@ -8,7 +8,7 @@ use crate::world::cell::MaterialId;
 use crate::world::grid::Grid;
 use crate::world::material::MaterialRegistry;
 
-const CHAR_W: u32 = 8;
+const CHAR_W: u32 = 16;
 const CHAR_H: u32 = 16;
 const ATLAS_COLS: usize = 16;
 const ATLAS_ROWS: usize = 16;

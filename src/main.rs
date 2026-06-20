@@ -216,7 +216,7 @@ fn run_ascii_mode() {
     let window = event_loop.create_window(
         Window::default_attributes()
             .with_title("Verbatim — ASCII")
-            .with_inner_size(winit::dpi::LogicalSize::new(160 * 8, 50 * 16))
+            .with_inner_size(winit::dpi::LogicalSize::new(160 * 16, 50 * 16))
     ).expect("Failed to create window");
     let window = Arc::new(window);
 
@@ -358,7 +358,7 @@ fn run_graphics_mode() {
     let window = event_loop.create_window(
         Window::default_attributes()
             .with_title("Verbatim — Graphics")
-            .with_inner_size(winit::dpi::LogicalSize::new(160 * 8, 50 * 16))
+            .with_inner_size(winit::dpi::LogicalSize::new(160 * 16, 50 * 16))
     ).expect("Failed to create window");
     let window = Arc::new(window);
 
