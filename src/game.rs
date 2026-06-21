@@ -16,6 +16,8 @@ use crate::world::chunked_grid::ChunkedGrid;
 use crate::world::grid::{WORLD_H, WORLD_W};
 use crate::world::worldgen::WorldGenerator;
 
+use crate::audio::AudioEngine;
+
 pub struct Game {
     pub grid: ChunkedGrid,
     pub ca: CellularAutomaton,
@@ -26,6 +28,7 @@ pub struct Game {
     pub player: Player,
     pub input: InputHandler,
     pub ui: UiLayer,
+    pub audio: AudioEngine,
     pub cam_x: i32,
     pub cam_y: i32,
     pub cam_offset_x: i32,
@@ -68,6 +71,7 @@ impl Game {
             player,
             input: InputHandler::new(),
             ui: UiLayer::new(),
+            audio: AudioEngine::new(),
             cam_x: 100,
             cam_y: 100,
             cam_offset_x: 0,
@@ -110,6 +114,7 @@ impl Game {
             player,
             input: InputHandler::new(),
             ui: UiLayer::new(),
+            audio: AudioEngine::new(),
             cam_x: 0,
             cam_y: 0,
             cam_offset_x: 0,
@@ -309,6 +314,9 @@ impl Game {
         // Jump: only on press, not held
         if self.input.jump_requested() {
             let on_ground = self.check_on_ground();
+            if on_ground {
+                self.audio.play("jump");
+            }
             self.player.jump(&mut self.entities, on_ground);
         }
 
@@ -471,7 +479,49 @@ impl Game {
             self.try_spawn_slime();
         }
 
+        self.play_ambient_sounds();
         self.grid.swap_modified_flags();
+    }
+
+    fn play_ambient_sounds(&mut self) {
+        if !self.audio.is_enabled() {
+            return;
+        }
+        let (px, py) = self.player.center(&self.entities);
+        let radius = 15i32;
+        let mut has_lava = false;
+        let mut has_fire = false;
+        let mut has_acid = false;
+        let mut has_water = false;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let x = px as i32 + dx;
+                let y = py as i32 + dy;
+                if !self.grid.in_bounds(x, y) {
+                    continue;
+                }
+                let cell = self.grid.get(x, y);
+                match cell.material {
+                    MaterialId::Lava => has_lava = true,
+                    MaterialId::Fire => has_fire = true,
+                    MaterialId::Acid => has_acid = true,
+                    MaterialId::Water => has_water = true,
+                    _ => {}
+                }
+            }
+        }
+        if has_lava && self.tick % 30 == 0 {
+            self.audio.play_throttled("lava_bubble", 500);
+        }
+        if has_fire && self.tick % 15 == 0 {
+            self.audio.play_throttled("fire_crackle", 200);
+        }
+        if has_acid && self.tick % 20 == 0 {
+            self.audio.play_throttled("acid_sizzle", 300);
+        }
+        if has_water && self.tick % 40 == 0 {
+            self.audio.play_throttled("water_splash", 600);
+        }
     }
 
     fn update_score(&mut self) {
@@ -528,6 +578,7 @@ impl Game {
             let item = self.items.all_mut().remove(idx);
             self.ui.add_message(&format!("Picked up {}", item.name()));
             self.player.inventory.push(item);
+            self.audio.play("pickup");
         }
     }
 
@@ -553,6 +604,7 @@ impl Game {
         self.init_world();
         self.ui
             .add_message(&format!("Descended to depth {}", self.depth));
+        self.audio.play("descend");
     }
 
     pub fn use_item(&mut self, index: usize) {
@@ -583,6 +635,7 @@ impl Game {
             self.player.inventory.remove(index);
             self.ui.add_message(&format!("Consumed {}", name));
         }
+        self.audio.play("powerup");
     }
 
     pub fn drop_item(&mut self, index: usize) {
@@ -701,10 +754,24 @@ impl Game {
     }
 
     pub fn update_projectiles(&mut self) {
+        let count_before = self.projectiles.all().len();
         self.projectiles.update(&self.grid);
         self.projectiles
             .resolve_hits(&mut self.grid, self.entities.all_mut(), &mut self.ui);
         self.projectiles.cull_dead();
+        let count_after = self.projectiles.all().len();
+        if count_after < count_before {
+            let any_fireball = self
+                .projectiles
+                .all()
+                .iter()
+                .any(|p| p.typ == ProjectileType::Fireball);
+            if any_fireball || self.fireball_mode {
+                self.audio.play("explosion");
+            } else {
+                self.audio.play("hit");
+            }
+        }
     }
 
     pub fn player_shoot(&mut self, dir_x: f32, dir_y: f32) {
@@ -734,6 +801,7 @@ impl Game {
         self.projectiles
             .spawn(typ, spawn_x, spawn_y, vx, vy, owner, damage_bonus);
         self.last_shot_tick = self.tick;
+        self.audio.play("shoot");
     }
 
     fn update_goblin_ai(&mut self) {
@@ -959,6 +1027,7 @@ impl Game {
                             _ => "Enemy hits you!",
                         };
                         self.ui.add_message(msg);
+                        self.audio.play("hit");
                     }
                 }
             }

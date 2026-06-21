@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod audio;
 pub mod entity;
 pub mod game;
 pub mod input;

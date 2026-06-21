@@ -18,6 +18,7 @@ pub struct WindowInput {
     pub cam_up: bool,
     pub cam_down: bool,
     pub quit: bool,
+    pub toggle_audio: bool,
     pub paint: Option<u8>,
     pub mouse_x: f64,
     pub mouse_y: f64,
@@ -39,6 +40,7 @@ pub struct WindowInput {
     descend_was_down: bool,
     use_item_was_down: bool,
     drop_item_was_down: bool,
+    audio_was_down: bool,
     down_keys: HashSet<KeyCode>,
 }
 
@@ -61,6 +63,7 @@ impl WindowInput {
             cam_up: false,
             cam_down: false,
             quit: false,
+            toggle_audio: false,
             paint: None,
             mouse_x: 0.0,
             mouse_y: 0.0,
@@ -82,6 +85,7 @@ impl WindowInput {
             descend_was_down: false,
             use_item_was_down: false,
             drop_item_was_down: false,
+            audio_was_down: false,
             down_keys: HashSet::new(),
         }
     }
@@ -202,6 +206,10 @@ impl WindowInput {
         self.cam_up = keys.contains(&KeyCode::KeyI);
         self.cam_down = keys.contains(&KeyCode::KeyO);
         self.quit = keys.contains(&KeyCode::KeyQ) || keys.contains(&KeyCode::Escape);
+
+        let now_audio = keys.contains(&KeyCode::KeyM);
+        self.toggle_audio = now_audio && !self.audio_was_down;
+        self.audio_was_down = now_audio;
 
         self.paint = None;
         if keys.contains(&KeyCode::Digit1) {

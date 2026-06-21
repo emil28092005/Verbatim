@@ -295,8 +295,15 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                         return;
                     }
 
+                    if input.toggle_audio {
+                        game.audio.toggle();
+                    }
+
                     if input.jump {
                         let on_ground = game.check_on_ground();
+                        if on_ground {
+                            game.audio.play("jump");
+                        }
                         game.player.jump(&mut game.entities, on_ground);
                     }
 

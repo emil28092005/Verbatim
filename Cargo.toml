@@ -15,6 +15,7 @@ ash-window = "0.13"
 raw-window-handle = "0.6"
 bytemuck = { version = "1", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+rodio = { version = "0.20", default-features = false, features = ["wav"] }
 
 [profile.release]
 opt-level = 3
