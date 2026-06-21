@@ -546,18 +546,13 @@ impl GraphicsRenderer {
                 let sx = b.x as i32 - cam_x;
                 let sy = b.y as i32 - cam_y;
                 if sx >= 0 && sx < self.grid_w as i32 && sy >= 0 && sy < self.grid_h as i32 {
-                    let fg = if e.on_fire {
-                        [255, 160, 40, 255]
-                    } else if !e.alive {
-                        [100, 60, 60, 255]
+                    let color = if e.on_fire {
+                        let flicker = b.fire_timer % 4;
+                        [255, 120 + flicker as u8 * 20, 20 + flicker as u8 * 10, 255]
                     } else {
-                        match e.kind {
-                            EntityKind::Player => [255, 255, 100, 255],
-                            EntityKind::Goblin => [100, 220, 100, 255],
-                            _ => [180, 50, 50, 255],
-                        }
+                        b.color
                     };
-                    entity_map.insert((sx, sy), fg);
+                    entity_map.insert((sx, sy), color);
                 }
             }
         }

@@ -14,6 +14,7 @@ pub struct SubBody {
     pub health: f32,
     pub on_fire: bool,
     pub fire_timer: u32,
+    pub color: [u8; 4],
 }
 
 impl SubBody {
@@ -31,6 +32,7 @@ impl SubBody {
             health: 100.0,
             on_fire: false,
             fire_timer: 0,
+            color: [255, 255, 255, 255],
         }
     }
 
@@ -113,7 +115,12 @@ impl VerletSolver {
         }
     }
 
-    pub fn solve_constraints(&self, bodies: &mut [SubBody], constraints: &[Constraint], iterations: u32) {
+    pub fn solve_constraints(
+        &self,
+        bodies: &mut [SubBody],
+        constraints: &[Constraint],
+        iterations: u32,
+    ) {
         const MAX_CORRECTION: f32 = 0.5;
         for _ in 0..iterations {
             for c in constraints {

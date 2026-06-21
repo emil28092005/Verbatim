@@ -1,11 +1,16 @@
-use std::io::{self, Write, stdout};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PushKeyboardEnhancementFlags, PopKeyboardEnhancementFlags},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute, queue,
-    style::{Color, SetBackgroundColor, SetForegroundColor, ResetColor, Print},
-    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, size as term_size},
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    terminal::{
+        self, size as term_size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+    },
 };
+use std::io::{self, stdout, Write};
 
 use crate::entity::EntityManager;
 use crate::render::Renderer;
@@ -64,7 +69,13 @@ impl Renderer for TerminalRenderer {
         Ok(())
     }
 
-    fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) -> io::Result<()> {
+    fn render(
+        &mut self,
+        grid: &Grid,
+        entities: &EntityManager,
+        cam_x: i32,
+        cam_y: i32,
+    ) -> io::Result<()> {
         if !self.initialized {
             return Ok(());
         }
@@ -85,7 +96,11 @@ impl Renderer for TerminalRenderer {
                 }
                 let cell = grid.get(wx, wy);
                 if cell.is_empty() {
-                    frame[idx] = (' ', (cell.fg[0], cell.fg[1], cell.fg[2]), (cell.bg[0], cell.bg[1], cell.bg[2]));
+                    frame[idx] = (
+                        ' ',
+                        (cell.fg[0], cell.fg[1], cell.fg[2]),
+                        (cell.bg[0], cell.bg[1], cell.bg[2]),
+                    );
                 } else {
                     let ch = cell.material.display_char();
                     let fg = if cell.material == MaterialId::Lava {
@@ -115,14 +130,8 @@ impl Renderer for TerminalRenderer {
                     };
                     let fg = if e.on_fire {
                         (255, 160, 40)
-                    } else if !e.alive {
-                        (100, 60, 60)
                     } else {
-                        match e.kind {
-                            crate::entity::EntityKind::Player => (255, 255, 100),
-                            crate::entity::EntityKind::Goblin => (100, 220, 100),
-                            _ => (180, 50, 50),
-                        }
+                        (b.color[0], b.color[1], b.color[2])
                     };
                     frame[idx] = (ch, fg, (20, 10, 10));
                 }
@@ -140,8 +149,16 @@ impl Renderer for TerminalRenderer {
 
             queue!(out, MoveTo(dx as u16, dy as u16))?;
 
-            let new_fg = Color::Rgb { r: fg.0, g: fg.1, b: fg.2 };
-            let new_bg = Color::Rgb { r: bg.0, g: bg.1, b: bg.2 };
+            let new_fg = Color::Rgb {
+                r: fg.0,
+                g: fg.1,
+                b: fg.2,
+            };
+            let new_bg = Color::Rgb {
+                r: bg.0,
+                g: bg.1,
+                b: bg.2,
+            };
             if prev_color != Some((new_fg, new_bg)) {
                 queue!(out, SetForegroundColor(new_fg), SetBackgroundColor(new_bg))?;
                 prev_color = Some((new_fg, new_bg));
