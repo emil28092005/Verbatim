@@ -229,6 +229,9 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     } => {
                         input.on_key_event(key_event.physical_key, key_event.state);
                     }
+                    WindowEvent::Focused(false) => {
+                        input.clear_keys();
+                    }
                     _ => {}
                 },
                 Event::AboutToWait => {
@@ -296,16 +299,16 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
 
                     if input.cam_left {
-                        game.cam_x -= 3;
+                        game.cam_offset_x -= 3;
                     }
                     if input.cam_right {
-                        game.cam_x += 3;
+                        game.cam_offset_x += 3;
                     }
                     if input.cam_up {
-                        game.cam_y -= 3;
+                        game.cam_offset_y -= 3;
                     }
                     if input.cam_down {
-                        game.cam_y += 3;
+                        game.cam_offset_y += 3;
                     }
 
                     if let Some(brush_id) = input.paint {
@@ -344,8 +347,8 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
 
                     let (px, py) = game.player.center(&game.entities);
-                    game.cam_x = px as i32 - (vw as i32 / 2);
-                    game.cam_y = py as i32 - (vh as i32 / 2);
+                    game.cam_x = px as i32 - (vw as i32 / 2) + game.cam_offset_x;
+                    game.cam_y = py as i32 - (vh as i32 / 2) + game.cam_offset_y;
 
                     game.build_ui(vw, vh);
 

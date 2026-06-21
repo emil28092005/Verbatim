@@ -183,7 +183,7 @@ impl UiLayer {
         };
         for i in 0..width {
             let x = screen_x + i;
-            let ch = if i < filled { '█' } else { '░' };
+            let ch = if i < filled { '#' } else { '-' };
             let fg = if i < filled { color } else { [80, 80, 80] };
             self.set(x, screen_y, ch, fg, [0, 0, 0]);
         }
@@ -212,19 +212,19 @@ impl UiLayer {
             let icon_x = sx + (e.half_w as i32 * UI_SCALE) + 1;
             let mut icon_y = sy - (e.half_h as i32 * UI_SCALE) - 7;
             if e.on_fire {
-                self.set(icon_x, icon_y, '🔥', [255, 100, 20], [0, 0, 0]);
+                self.set(icon_x, icon_y, 'F', [255, 100, 20], [0, 0, 0]);
                 icon_y += 1;
             }
             if e.poisoned {
-                self.set(icon_x, icon_y, '☠', [80, 255, 80], [0, 0, 0]);
+                self.set(icon_x, icon_y, 'P', [80, 255, 80], [0, 0, 0]);
                 icon_y += 1;
             }
             if e.frozen {
-                self.set(icon_x, icon_y, '❄', [120, 220, 255], [0, 0, 0]);
+                self.set(icon_x, icon_y, 'I', [120, 220, 255], [0, 0, 0]);
                 icon_y += 1;
             }
             if e.bleeding {
-                self.set(icon_x, icon_y, '✚', [255, 40, 40], [0, 0, 0]);
+                self.set(icon_x, icon_y, 'B', [255, 40, 40], [0, 0, 0]);
             }
         }
     }
@@ -286,7 +286,7 @@ impl UiLayer {
                     [40, 40, 50]
                 };
                 let bg = [20, 20, 30];
-                self.set(start_x + dx, start_y + dy, '·', fg, bg);
+                self.set(start_x + dx, start_y + dy, '.', fg, bg);
             }
         }
         for e in entities {
@@ -308,20 +308,20 @@ impl UiLayer {
             }
         }
         for dx in 0..size {
-            self.set(start_x + dx, start_y - 1, '─', [80, 80, 100], [0, 0, 0]);
-            self.set(start_x + dx, start_y + size, '─', [80, 80, 100], [0, 0, 0]);
+            self.set(start_x + dx, start_y - 1, '-', [80, 80, 100], [0, 0, 0]);
+            self.set(start_x + dx, start_y + size, '-', [80, 80, 100], [0, 0, 0]);
         }
         for dy in 0..size {
-            self.set(start_x - 1, start_y + dy, '│', [80, 80, 100], [0, 0, 0]);
-            self.set(start_x + size, start_y + dy, '│', [80, 80, 100], [0, 0, 0]);
+            self.set(start_x - 1, start_y + dy, '|', [80, 80, 100], [0, 0, 0]);
+            self.set(start_x + size, start_y + dy, '|', [80, 80, 100], [0, 0, 0]);
         }
-        self.set(start_x - 1, start_y - 1, '┌', [80, 80, 100], [0, 0, 0]);
-        self.set(start_x + size, start_y - 1, '┐', [80, 80, 100], [0, 0, 0]);
-        self.set(start_x - 1, start_y + size, '└', [80, 80, 100], [0, 0, 0]);
+        self.set(start_x - 1, start_y - 1, '+', [80, 80, 100], [0, 0, 0]);
+        self.set(start_x + size, start_y - 1, '+', [80, 80, 100], [0, 0, 0]);
+        self.set(start_x - 1, start_y + size, '+', [80, 80, 100], [0, 0, 0]);
         self.set(
             start_x + size,
             start_y + size,
-            '┘',
+            '+',
             [80, 80, 100],
             [0, 0, 0],
         );
@@ -351,23 +351,23 @@ impl UiLayer {
         }
         for x in 0..w {
             if (start_x + x) % 2 == 0 {
-                self.set_alpha(start_x + x, start_y, '·', border, bg, border_alpha);
-                self.set_alpha(start_x + x, start_y + h - 1, '·', border, bg, border_alpha);
+                self.set_alpha(start_x + x, start_y, '.', border, bg, border_alpha);
+                self.set_alpha(start_x + x, start_y + h - 1, '.', border, bg, border_alpha);
             }
         }
         for y in 0..h {
             if (start_y + y) % 2 == 0 {
-                self.set_alpha(start_x, start_y + y, '·', border, bg, border_alpha);
-                self.set_alpha(start_x + w - 1, start_y + y, '·', border, bg, border_alpha);
+                self.set_alpha(start_x, start_y + y, '.', border, bg, border_alpha);
+                self.set_alpha(start_x + w - 1, start_y + y, '.', border, bg, border_alpha);
             }
         }
-        self.set_alpha(start_x, start_y, '◆', border, bg, border_alpha);
-        self.set_alpha(start_x + w - 1, start_y, '◆', border, bg, border_alpha);
-        self.set_alpha(start_x, start_y + h - 1, '◆', border, bg, border_alpha);
+        self.set_alpha(start_x, start_y, '*', border, bg, border_alpha);
+        self.set_alpha(start_x + w - 1, start_y, '*', border, bg, border_alpha);
+        self.set_alpha(start_x, start_y + h - 1, '*', border, bg, border_alpha);
         self.set_alpha(
             start_x + w - 1,
             start_y + h - 1,
-            '◆',
+            '*',
             border,
             bg,
             border_alpha,
@@ -389,7 +389,7 @@ impl UiLayer {
             };
             self.draw_text(start_x + 2, start_y + 7, "HP", fg, 255);
             for i in 0..32 {
-                let ch = if i < hp_filled { '█' } else { '░' };
+                let ch = if i < hp_filled { '#' } else { '-' };
                 let c = if i < hp_filled {
                     bar_color
                 } else {
@@ -404,7 +404,7 @@ impl UiLayer {
             let xp_filled = (xp_ratio * 32.0).round() as i32;
             self.draw_text(start_x + 2, start_y + 19, "XP", fg, 255);
             for i in 0..32 {
-                let ch = if i < xp_filled { '█' } else { '░' };
+                let ch = if i < xp_filled { '#' } else { '-' };
                 let c = if i < xp_filled {
                     [80, 160, 240]
                 } else {
@@ -431,16 +431,16 @@ impl UiLayer {
         let status = if let Some(p) = player {
             let mut s = String::new();
             if p.on_fire {
-                s.push('🔥');
+                s.push_str("[FIRE] ");
             }
             if p.poisoned {
-                s.push('☠');
+                s.push_str("[PSN] ");
             }
             if p.frozen {
-                s.push('❄');
+                s.push_str("[ICE] ");
             }
             if p.bleeding {
-                s.push('✚');
+                s.push_str("[BLD] ");
             }
             s
         } else {
@@ -508,7 +508,7 @@ impl UiLayer {
         }
         for x in 0..screen_w {
             if x % 2 == 0 {
-                self.set_alpha(x as i32, y_top - 1, '·', border, bg, 220);
+                self.set_alpha(x as i32, y_top - 1, '.', border, bg, 220);
             }
         }
 
@@ -524,7 +524,7 @@ impl UiLayer {
                 [255, 60, 60]
             };
             for i in 0..28 {
-                let ch = if i < hp_filled { '█' } else { '░' };
+                let ch = if i < hp_filled { '#' } else { '-' };
                 let c = if i < hp_filled { bar_fg } else { [70, 70, 90] };
                 self.set(10 + i, y_row1 + 4, ch, c, bg);
             }
@@ -533,7 +533,7 @@ impl UiLayer {
         }
 
         let brush_color = brush_color(brush);
-        self.set(0, y_row2 + 4, '■', brush_color, bg);
+        self.set(0, y_row2 + 4, '#', brush_color, bg);
         let brush_text = format!(" {}", brush_name);
         self.draw_text(1, y_row2, &brush_text, [200, 200, 140], 255);
 
@@ -573,6 +573,9 @@ impl UiLayer {
         let mut yy = y;
         let messages: Vec<(String, u32)> = self.messages.iter().rev().take(8).cloned().collect();
         for (msg, life) in messages {
+            if yy < 0 {
+                break;
+            }
             let fade = (life as f32 / 300.0).clamp(0.3, 1.0);
             let fg = [
                 (200.0 * fade) as u8,
@@ -732,6 +735,18 @@ fn char_bitmap(c: char) -> Option<[u8; 5]> {
         '?' => Some([0b111, 0b001, 0b011, 0b000, 0b010]),
         '!' => Some([0b010, 0b010, 0b010, 0b000, 0b010]),
         '.' => Some([0b000, 0b000, 0b000, 0b000, 0b010]),
+        ',' => Some([0b000, 0b000, 0b000, 0b010, 0b100]),
+        '\'' => Some([0b010, 0b010, 0b000, 0b000, 0b000]),
+        '+' => Some([0b000, 0b010, 0b111, 0b010, 0b000]),
+        '=' => Some([0b000, 0b111, 0b000, 0b111, 0b000]),
+        '>' => Some([0b100, 0b010, 0b001, 0b010, 0b100]),
+        '<' => Some([0b001, 0b010, 0b100, 0b010, 0b001]),
+        '*' => Some([0b000, 0b101, 0b010, 0b101, 0b000]),
+        '%' => Some([0b101, 0b001, 0b010, 0b100, 0b101]),
+        '#' => Some([0b101, 0b111, 0b101, 0b111, 0b101]),
+        '|' => Some([0b010, 0b010, 0b010, 0b010, 0b010]),
+        '@' => Some([0b111, 0b101, 0b111, 0b101, 0b111]),
+        '_' => Some([0b000, 0b000, 0b000, 0b000, 0b111]),
         _ => None,
     }
 }

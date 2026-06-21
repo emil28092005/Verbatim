@@ -143,7 +143,7 @@ impl Projectile {
                     }
                 }
             }
-            if entity.id != self.owner && entity.id != 0 {
+            if entity.id != self.owner {
                 let before = entity.health;
                 entity.take_damage(self.total_damage());
                 ui.add_damage_number(
@@ -155,7 +155,7 @@ impl Projectile {
             return;
         }
 
-        if entity.id == self.owner || entity.id == 0 {
+        if entity.id == self.owner {
             return;
         }
 

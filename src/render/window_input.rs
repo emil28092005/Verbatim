@@ -80,6 +80,10 @@ impl WindowInput {
         }
     }
 
+    pub fn clear_keys(&mut self) {
+        self.down_keys.clear();
+    }
+
     pub fn update(&mut self) {
         let keys = &self.down_keys;
 

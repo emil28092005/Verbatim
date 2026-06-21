@@ -121,7 +121,7 @@ pub fn compute_lighting(
     let mut grid_light = LightGrid::new(view_w, view_h);
     grid_light.clear(ambient);
 
-    let sources = gather_sources(grid);
+    let sources = gather_sources_in_range(grid, cam_x, cam_y, view_w, view_h, 30);
     let cap = sources.len().min(32);
     let radius_limit = 30u32;
 

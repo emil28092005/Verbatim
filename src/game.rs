@@ -25,6 +25,8 @@ pub struct Game {
     pub ui: UiLayer,
     pub cam_x: i32,
     pub cam_y: i32,
+    pub cam_offset_x: i32,
+    pub cam_offset_y: i32,
     pub running: bool,
     pub tick: u64,
     pub fixed_dt: Duration,
@@ -56,6 +58,8 @@ impl Game {
             ui: UiLayer::new(),
             cam_x: 100,
             cam_y: 100,
+            cam_offset_x: 0,
+            cam_offset_y: 0,
             running: true,
             tick: 0,
             fixed_dt: Duration::from_millis(16),
@@ -239,8 +243,8 @@ impl Game {
             let vw = renderer.viewport_w();
             let vh = renderer.viewport_h();
             let (px, py) = self.player.center(&self.entities);
-            self.cam_x = px as i32 - (vw as i32 / 2);
-            self.cam_y = py as i32 - (vh as i32 / 2);
+            self.cam_x = px as i32 - (vw as i32 / 2) + self.cam_offset_x;
+            self.cam_y = py as i32 - (vh as i32 / 2) + self.cam_offset_y;
 
             self.build_ui(vw, vh);
 
@@ -520,12 +524,16 @@ impl Game {
     }
 
     pub fn descend(&mut self) {
-        if let Some(e) = self.player.entity(&self.entities) {
-            let foot_x = e.cx as i32;
-            let foot_y = (e.cy + e.half_h).ceil() as i32;
-            if self.grid.get(foot_x, foot_y).material != MaterialId::Stairs {
-                return;
+        let can_descend = match self.player.entity(&self.entities) {
+            Some(e) => {
+                let foot_x = e.cx as i32;
+                let foot_y = (e.cy + e.half_h).ceil() as i32;
+                self.grid.get(foot_x, foot_y).material == MaterialId::Stairs
             }
+            None => false,
+        };
+        if !can_descend {
+            return;
         }
         self.depth += 1;
         self.grid = Grid::new();
@@ -546,10 +554,18 @@ impl Game {
         let item = self.player.inventory[index].clone();
         let name = item.name();
         if item.is_weapon() {
+            if let Some(old) = self.player.weapon.take() {
+                self.player.inventory.push(old);
+            }
             self.player.weapon = Some(item);
+            self.player.inventory.remove(index);
             self.ui.add_message(&format!("Equipped {}", name));
         } else if item.is_armor() {
+            if let Some(old) = self.player.armor.take() {
+                self.player.inventory.push(old);
+            }
             self.player.armor = Some(item);
+            self.player.inventory.remove(index);
             self.ui.add_message(&format!("Equipped {}", name));
         } else if item.is_consumable() {
             let heal = item.heal_amount();
@@ -752,11 +768,16 @@ impl Game {
             let jump_phase = tick % 60;
             if jump_phase == 0 && dist < 40.0 {
                 let dir_x = dx / dist;
-                let _dir_y = dy / dist;
+                let dir_y = dy / dist;
                 let jump_power = 0.8 + (1.0 - dist / 40.0).min(0.5) * 0.5;
                 if let Some(e) = self.entities.all_mut().get_mut(idx) {
                     e.set_horizontal_vel(dir_x * jump_power);
-                    e.set_vertical_vel(-jump_power * 0.8);
+                    let vy = if dy < -1.0 {
+                        -jump_power * 0.8
+                    } else {
+                        -jump_power * 0.6
+                    };
+                    e.set_vertical_vel(vy + dir_y * jump_power * 0.3);
                 }
             } else if jump_phase == 30 {
                 if let Some(e) = self.entities.all_mut().get_mut(idx) {
@@ -768,6 +789,14 @@ impl Game {
 
     fn update_combat(&mut self) {
         let player_id = self.player.entity_id;
+        let player_alive = self
+            .entities
+            .get(player_id)
+            .map(|e| e.alive)
+            .unwrap_or(false);
+        if !player_alive {
+            return;
+        }
         let player_center = self.player.center(&self.entities);
         let player_half_w = self
             .entities
@@ -1196,7 +1225,10 @@ impl Game {
         substeps: u32,
     ) {
         let grid = &self.grid;
-        let e = self.entities.all_mut().get_mut(idx).unwrap();
+        let e = match self.entities.all_mut().get_mut(idx) {
+            Some(e) => e,
+            None => return,
+        };
         let alive = e.alive;
         let bodies = &mut e.bodies;
         let constraints = &e.constraints;

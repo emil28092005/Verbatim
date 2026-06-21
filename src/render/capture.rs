@@ -86,7 +86,7 @@ fn background_color(wx: i32, wy: i32, vy: i32, view_h: i32) -> [u8; 3] {
     let base_g = (10.0 + t * 25.0) as u8;
     let base_b = (25.0 + t * 35.0) as u8;
 
-    let hash = ((wx.wrapping_mul(73856093)) ^ (wy.wrapping_mul(19349663))).abs();
+    let hash = ((wx.wrapping_mul(73856093)) ^ (wy.wrapping_mul(19349663))).wrapping_abs();
     if hash % 80 == 0 {
         let brightness = (60 + (hash % 120) as u8).min(255);
         return [brightness, brightness, brightness + 20];
