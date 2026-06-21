@@ -211,6 +211,24 @@ impl Item {
     }
 }
 
+impl ItemType {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "Dagger" => Some(Self::Dagger),
+            "Sword" => Some(Self::Sword),
+            "Bow" => Some(Self::Bow),
+            "Leather Armor" => Some(Self::LeatherArmor),
+            "Plate Armor" => Some(Self::PlateArmor),
+            "Shield" => Some(Self::Shield),
+            "Health Potion" => Some(Self::HealthPotion),
+            "Mana Potion" => Some(Self::ManaPotion),
+            "Food" => Some(Self::Food),
+            "Scroll" => Some(Self::Scroll),
+            _ => None,
+        }
+    }
+}
+
 pub struct ItemManager {
     items: Vec<Item>,
     next_id: u32,

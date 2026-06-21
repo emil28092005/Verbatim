@@ -18,7 +18,7 @@
 | AI pipe protocol | Working | JSON stdin/stdout, 16 commands, full state export |
 | Test framework | Working | 109 Rust tests + 14 JSON scenarios, all passing |
 | Replay system | Working | Seeded determinism, record/playback, play_until_tick |
-| World generation | Basic | Sinusoidal terrain, water/lava/acid pools, wood structure, sand dune, stone wall |
+| World generation | Working | Procedural chunk-based biomes: surface (noise), caves (CA), dungeons (BSP); vertical biome progression by chunk Y; 12500×12500 continuous world; chunk streaming + cache |
 | Cross-platform | Working | Windows/Linux/macOS via winit + ash_window, no platform-specific code |
 | Adaptive viewport | Working | Window resize → more/fewer cells visible, cells stay 16x16 pixels |
 | Per-cell color (reality layer) | Working | Each cell stores fg/bg color inline, no registry lookup in render path |
@@ -26,7 +26,11 @@
 ### Architecture
 
 ```
-Source of truth: text grid (250x250, Cell = material + temp + fg + bg + variant)
+Source of truth: `ChunkedGrid` of `Cell` structs
+- Bounded mode: `Vec<Chunk>` for 250x250 test/AI grids
+- Infinite mode: `HashMap<(i64, i64), Chunk>` for continuous 12500x12500 cell worlds
+- 64x64 chunks, dirty rects, active flags, per-chunk persistence
+- Chunk streaming: load/generate around player, save/unload distant chunks
 
 Three entity types:
   1. Cellular  — materials in grid, per-cell CA rules
@@ -45,8 +49,8 @@ Three render modes:
 
 ### Numbers
 
-- ~5964 lines Rust
-- 109 integration tests, 14 JSON scenarios
+- ~6700 lines Rust
+- 171 integration tests, 14 JSON scenarios
 - 40+ git commits
 - 0 compiler warnings (excluding winit deprecation notices)
 - Cross-platform: Windows/Linux/macOS
@@ -154,11 +158,13 @@ instanced quads with UI texture coordinates. Transparent background, drawn on to
 
 **Goal: explorable world with depth and variety**
 
-- [ ] Chunk system: world divided into chunks (64x64), only active chunks simulated
-- [ ] Chunk persistence: save/load chunks to disk
-- [ ] Vertical descent: stairs/holes between depth levels
+- [x] Chunk system: world divided into chunks (64x64), only active chunks simulated
+- [x] Chunk persistence: save/load chunks to disk
+- [x] Vertical descent: stairs/holes between depth levels
+- [x] Chunk streaming: load/generate around player, save/unload distant chunks
+- [x] Vertical biome progression: surface → caves → dungeon by chunk Y
 - [ ] Biomes: grassland, cave, lava cavern, ice, fungus forest — each with material palette
-- [ ] Procedural dungeon generation: rooms, corridors, traps
+- [x] Procedural dungeon generation: rooms, corridors, traps
 - [ ] Camera zoom: +/- keys to change viewport scale (more or fewer cells visible)
 - [ ] Minimap: ASCII overview of explored area
 - [ ] Day/night cycle: ambient light affects rendering (dimmer at night)
@@ -168,6 +174,7 @@ instanced quads with UI texture coordinates. Transparent background, drawn on to
 - Entity crossing chunk boundary continues correctly
 - Dungeon generation produces connected rooms
 - Biome materials match expected palette
+- Streaming generates chunks as player moves
 
 ### Phase 3: RPG Layer
 
@@ -230,14 +237,16 @@ Two distinct render modes, both GPU-accelerated via Vulkan:
 - [x] Per-cell color: fg/bg stored in Cell, no registry lookup in render path
 - [x] Square cells: 16x16 pixels, uniform grid
 - [x] GpuRenderer trait: generic run_gpu_mode<R> for both renderers
+- [x] Dynamic grid size: GPU buffers sized for 12500x12500, renderers use viewport-relative grid buffer
 - [ ] Dirty cell tracking: only update changed cells in instance buffer
 - [ ] Camera zoom: +/- keys to change viewport scale
 
 **Graphics layers over both modes (Phase 4b):**
-- [ ] Lighting pass: compute shader calculates light grid from sources (lava, fire, torches)
+- [x] Lighting pass: CPU light grid from sources (lava, fire, torches), shader line-of-sight
   - Materials emit light with color/intensity
-  - Walls cast shadows (ray-march in compute)
+  - Walls cast shadows (ray-march in shader)
   - Light grid modulates cell brightness in render
+- [ ] GPU compute lighting: move ray-march to compute shader for large worlds
 - [ ] Particle system: GPU particles positioned relative to grid cells
   - Fire sparks, water splashes, smoke trails, blood
   - Particle lifetime + physics (gravity, wind)
@@ -443,10 +452,11 @@ src/
   world/
     cell.rs            # Cell struct, MaterialId enum
     material.rs        # Material properties registry
-    grid.rs            # Grid (250x250), cell access
+    grid.rs            # Grid (legacy, 250x250), cell access
+    chunked_grid.rs    # ChunkedGrid: bounded + infinite chunk storage
     cellular.rs        # Cellular automaton rules
-    chunk.rs           # [Phase 2] chunk system
-    worldgen.rs        # [Phase 2] procedural generation
+    chunk.rs           # Chunk system
+    worldgen.rs        # Procedural generation, per-chunk generation
     layers.rs          # [Phase 6] multi-layer world (temp, pressure, gas, light)
   physics/
     verlet.rs          # Verlet integrator, constraints

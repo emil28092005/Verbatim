@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::entity::{EntityKind, EntityManager};
 use crate::render::lighting;
 use crate::world::cell::MaterialId;
-use crate::world::grid::{Grid, WORLD_H, WORLD_W};
+use crate::world::chunked_grid::ChunkedGrid;
+use crate::world::grid::{MAX_WORLD_H, MAX_WORLD_W};
 
 const CHAR_W: u32 = 8;
 const CHAR_H: u32 = 8;
@@ -225,7 +226,7 @@ impl VulkanRenderer {
         let (ui_instance_buffer, ui_instance_memory, ui_instance_ptr) =
             create_instance_buffer(&device, &instance, physical_device, ui_instance_capacity)?;
 
-        let grid_data = vec![0u32; WORLD_W * WORLD_H];
+        let grid_data = vec![0u32; MAX_WORLD_W * MAX_WORLD_H];
         let (grid_buffer, grid_memory) = create_buffer_with_data(
             &device,
             &instance,
@@ -234,7 +235,7 @@ impl VulkanRenderer {
             vk::BufferUsageFlags::STORAGE_BUFFER,
         )?;
         let grid_ptr = unsafe {
-            let sz = (WORLD_W * WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize;
+            let sz = (MAX_WORLD_W * MAX_WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize;
             let ptr = device
                 .map_memory(grid_memory, 0, sz, vk::MemoryMapFlags::default())
                 .map_err(|e| format!("map grid: {e:?}"))?;
@@ -339,7 +340,7 @@ impl VulkanRenderer {
 
     pub fn render(
         &mut self,
-        grid: &Grid,
+        grid: &ChunkedGrid,
         entities: &EntityManager,
         items: &crate::entity::item::ItemManager,
         ui: &crate::ui::UiLayer,
@@ -441,16 +442,12 @@ impl VulkanRenderer {
         }
 
         unsafe {
-            let margin = 30i32;
-            let x_min = (cam_x - margin).max(0) as usize;
-            let x_max = (cam_x + self.grid_w as i32 + margin).min(WORLD_W as i32) as usize;
-            let y_min = (cam_y - margin).max(0) as usize;
-            let y_max = (cam_y + self.grid_h as i32 + margin).min(WORLD_H as i32) as usize;
-            for y in y_min..y_max {
-                let row_offset = y * WORLD_W;
-                for x in x_min..x_max {
-                    let i = row_offset + x;
-                    *self.grid_ptr.add(i) = grid.cells[i].material as u32;
+            for dy in 0..self.grid_h {
+                for dx in 0..self.grid_w {
+                    let wx = cam_x + dx as i32;
+                    let wy = cam_y + dy as i32;
+                    let idx = dy * self.grid_w + dx;
+                    *self.grid_ptr.add(idx) = grid.get(wx, wy).material as u32;
                 }
             }
         }
@@ -627,7 +624,7 @@ impl VulkanRenderer {
                     self.swapchain_extent.height as f32,
                 ],
                 cell_size: [CHAR_W as f32, CHAR_H as f32],
-                world_size: [WORLD_W as i32, WORLD_H as i32],
+                world_size: [self.grid_w as i32, self.grid_h as i32],
                 cam_pos: [cam_x, cam_y],
                 ambient: [
                     ambient[0] as f32 / 255.0,
@@ -660,7 +657,7 @@ impl VulkanRenderer {
                         self.swapchain_extent.height as f32,
                     ],
                     cell_size: [UI_CELL_SIZE as f32, UI_CELL_SIZE as f32],
-                    world_size: [WORLD_W as i32, WORLD_H as i32],
+                    world_size: [self.grid_w as i32, self.grid_h as i32],
                     cam_pos: [0, 0],
                     ambient: [0.0, 0.0, 0.0],
                     is_ui: 1,
@@ -1824,7 +1821,7 @@ fn update_descriptor_set(
     let bi = vk::DescriptorBufferInfo::default()
         .buffer(grid_buffer)
         .offset(0)
-        .range((WORLD_W * WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize);
+        .range((MAX_WORLD_W * MAX_WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize);
     let li = vk::DescriptorBufferInfo::default()
         .buffer(light_buffer)
         .offset(0)

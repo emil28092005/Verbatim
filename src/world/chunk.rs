@@ -6,6 +6,9 @@ pub struct Chunk {
     pub cells: Vec<Cell>,
     pub active: bool,
     pub modified: bool,
+    pub was_modified: bool,
+    pub generated: bool,
+    pub dirty: Option<(i32, i32, i32, i32)>,
 }
 
 impl Chunk {
@@ -15,6 +18,20 @@ impl Chunk {
             cells: vec![Cell::empty(); size],
             active: false,
             modified: false,
+            was_modified: false,
+            generated: false,
+            dirty: None,
+        }
+    }
+
+    pub fn swap_modified_flags(&mut self) {
+        self.was_modified = self.modified;
+        self.modified = false;
+    }
+
+    pub fn reset_tick_flags(&mut self) {
+        for c in &mut self.cells {
+            c.updated_this_tick = false;
         }
     }
 
@@ -49,9 +66,29 @@ impl Chunk {
         }
     }
 
-    pub fn reset_tick_flags(&mut self) {
-        for c in &mut self.cells {
-            c.updated_this_tick = false;
+    pub fn is_empty(&self) -> bool {
+        self.cells.iter().all(|c| c.is_empty())
+    }
+
+    #[inline]
+    pub fn mark_dirty(&mut self, x: i32, y: i32) {
+        if !Self::in_bounds(x, y) {
+            return;
+        }
+        let min_x = (x - 1).max(0);
+        let min_y = (y - 1).max(0);
+        let max_x = (x + 1).min(CHUNK_SIZE as i32 - 1);
+        let max_y = (y + 1).min(CHUNK_SIZE as i32 - 1);
+        match self.dirty {
+            None => self.dirty = Some((min_x, min_y, max_x, max_y)),
+            Some((dx0, dy0, dx1, dy1)) => {
+                self.dirty = Some((
+                    dx0.min(min_x),
+                    dy0.min(min_y),
+                    dx1.max(max_x),
+                    dy1.max(max_y),
+                ));
+            }
         }
     }
 }

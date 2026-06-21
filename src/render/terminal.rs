@@ -16,7 +16,7 @@ use crate::entity::EntityManager;
 use crate::render::lighting::{self, apply_light_tuple, LightGrid};
 use crate::render::Renderer;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 fn entity_priority(kind: crate::entity::EntityKind) -> u32 {
     match kind {
@@ -96,7 +96,7 @@ impl Renderer for TerminalRenderer {
 
     fn render(
         &mut self,
-        grid: &Grid,
+        grid: &ChunkedGrid,
         entities: &EntityManager,
         items: &crate::entity::item::ItemManager,
         ui: &crate::ui::UiLayer,

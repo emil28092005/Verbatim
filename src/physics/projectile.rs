@@ -1,6 +1,6 @@
 use crate::entity::entity::{Entity, EntityId};
 use crate::world::cell::{Cell, MaterialId};
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProjectileType {
@@ -65,7 +65,7 @@ impl Projectile {
         self.damage + self.damage_bonus
     }
 
-    pub fn update(&mut self, grid: &Grid) {
+    pub fn update(&mut self, grid: &ChunkedGrid) {
         if !self.alive {
             return;
         }
@@ -118,7 +118,12 @@ impl Projectile {
         dx.abs() < hit_w && dy.abs() < hit_h
     }
 
-    pub fn apply_impact(&self, grid: &mut Grid, entity: &mut Entity, ui: &mut crate::ui::UiLayer) {
+    pub fn apply_impact(
+        &self,
+        grid: &mut ChunkedGrid,
+        entity: &mut Entity,
+        ui: &mut crate::ui::UiLayer,
+    ) {
         if self.typ == ProjectileType::Fireball {
             let min_x = (self.x - 1.5).floor() as i32;
             let max_x = (self.x + 1.5).ceil() as i32;
@@ -226,7 +231,7 @@ impl ProjectileManager {
         self.spawn(ProjectileType::Arrow, x, y, vx, vy, owner, 0.0)
     }
 
-    pub fn update(&mut self, grid: &Grid) {
+    pub fn update(&mut self, grid: &ChunkedGrid) {
         for p in &mut self.projectiles {
             p.update(grid);
         }
@@ -234,7 +239,7 @@ impl ProjectileManager {
 
     pub fn resolve_hits(
         &mut self,
-        grid: &mut Grid,
+        grid: &mut ChunkedGrid,
         entities: &mut [Entity],
         ui: &mut crate::ui::UiLayer,
     ) {

@@ -82,14 +82,16 @@ impl InputHandler {
     pub fn start(&mut self) {
         let (tx, rx) = mpsc::channel::<Event>();
         self.receiver = Some(rx);
-        self.input_thread = Some(thread::spawn(move || loop {
-            match event::read() {
-                Ok(ev) => {
-                    if tx.send(ev).is_err() {
-                        break;
+        self.input_thread = Some(thread::spawn(move || {
+            loop {
+                match event::read() {
+                    Ok(ev) => {
+                        if tx.send(ev).is_err() {
+                            break;
+                        }
                     }
+                    Err(_) => break,
                 }
-                Err(_) => break,
             }
         }));
     }

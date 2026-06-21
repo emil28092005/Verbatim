@@ -8,13 +8,13 @@ pub mod window_input;
 use crate::entity::item::ItemManager;
 use crate::entity::EntityManager;
 use crate::ui::UiLayer;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub trait Renderer {
     fn init(&mut self) -> std::io::Result<()>;
     fn render(
         &mut self,
-        grid: &Grid,
+        grid: &ChunkedGrid,
         entities: &EntityManager,
         items: &ItemManager,
         ui: &UiLayer,

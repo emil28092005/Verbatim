@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::entity::entity::{Entity, EntityKind};
 use crate::world::cell::MaterialId;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub const UI_SCALE: i32 = 4;
 
@@ -241,7 +242,7 @@ impl UiLayer {
         &mut self,
         screen_w: usize,
         screen_h: usize,
-        grid: &crate::world::grid::Grid,
+        grid: &ChunkedGrid,
         entities: &[Entity],
         cam_x: i32,
         cam_y: i32,

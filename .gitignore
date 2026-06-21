@@ -3,3 +3,4 @@ Cargo.lock
 graphify-out/
 headless_dump.txt
 headless_dump.png
+/cache

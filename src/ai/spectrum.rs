@@ -1,5 +1,5 @@
 use crate::entity::{EntityKind, EntityManager};
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub enum Spectrum {
     Materials,
@@ -36,7 +36,7 @@ impl Spectrum {
 
 pub fn render_spectrum(
     spectrum: &Spectrum,
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     light: Option<&crate::render::lighting::LightGrid>,
     cam_x: i32,
@@ -55,7 +55,7 @@ pub fn render_spectrum(
 }
 
 fn render_materials(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     cam_x: i32,
     cam_y: i32,
@@ -100,7 +100,7 @@ fn render_materials(
     buf
 }
 
-fn render_temperature(grid: &Grid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+fn render_temperature(grid: &ChunkedGrid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
     let mut buf = String::with_capacity(vw * vh + vh);
     for dy in 0..vh {
         for dx in 0..vw {
@@ -141,7 +141,7 @@ fn render_temperature(grid: &Grid, cam_x: i32, cam_y: i32, vw: usize, vh: usize)
 }
 
 fn render_light(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     light: Option<&crate::render::lighting::LightGrid>,
     cam_x: i32,
@@ -188,7 +188,7 @@ fn render_light(
 }
 
 fn render_entities(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     cam_x: i32,
     cam_y: i32,
@@ -236,7 +236,7 @@ fn render_entities(
     buf
 }
 
-fn render_density(grid: &Grid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+fn render_density(grid: &ChunkedGrid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
     let reg = crate::world::material::MaterialRegistry::instance();
     let mut buf = String::with_capacity(vw * vh + vh);
     for dy in 0..vh {
@@ -275,7 +275,7 @@ fn render_density(grid: &Grid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> 
 }
 
 fn render_velocity(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     cam_x: i32,
     cam_y: i32,
@@ -327,7 +327,7 @@ fn render_velocity(
 }
 
 pub fn render_all_spectrums(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     light: Option<&crate::render::lighting::LightGrid>,
     cam_x: i32,
@@ -347,7 +347,7 @@ pub fn render_all_spectrums(
 }
 
 pub fn format_all_spectrums(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     light: Option<&crate::render::lighting::LightGrid>,
     cam_x: i32,

@@ -3,7 +3,7 @@ use crate::ai::replay::ReplayRecorder;
 use crate::ai::state::{build_game_state, render_view, CellInfo, EntityInfo, GameState};
 use crate::game::Game;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub struct GameSession {
     pub game: Game,
@@ -223,7 +223,7 @@ impl GameSession {
         }
     }
 
-    pub fn grid(&self) -> &Grid {
+    pub fn grid(&self) -> &ChunkedGrid {
         &self.game.grid
     }
 

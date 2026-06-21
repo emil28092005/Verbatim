@@ -6,10 +6,14 @@ use std::path::Path;
 pub const WORLD_W: usize = 250;
 pub const WORLD_H: usize = 250;
 
+pub const MAX_WORLD_W: usize = 2048;
+pub const MAX_WORLD_H: usize = 2048;
+
 pub struct ChunkMeta {
     pub active: bool,
     pub modified: bool,
     pub was_modified: bool,
+    pub dirty: Option<(i32, i32, i32, i32)>,
 }
 
 pub struct Grid {
@@ -24,22 +28,27 @@ pub struct Grid {
 
 impl Grid {
     pub fn new() -> Self {
-        let size = WORLD_W * WORLD_H;
+        Self::with_size(WORLD_W, WORLD_H)
+    }
+
+    pub fn with_size(width: usize, height: usize) -> Self {
+        let size = width * height;
         let chunk_size = CHUNK_SIZE;
-        let chunks_x = (WORLD_W + chunk_size - 1) / chunk_size;
-        let chunks_y = (WORLD_H + chunk_size - 1) / chunk_size;
+        let chunks_x = (width + chunk_size - 1) / chunk_size;
+        let chunks_y = (height + chunk_size - 1) / chunk_size;
         let mut chunks = Vec::with_capacity(chunks_x * chunks_y);
         for _ in 0..chunks_x * chunks_y {
             chunks.push(ChunkMeta {
                 active: true,
                 modified: false,
                 was_modified: false,
+                dirty: None,
             });
         }
         Self {
             cells: vec![Cell::empty(); size],
-            width: WORLD_W,
-            height: WORLD_H,
+            width,
+            height,
             chunk_size,
             chunks_x,
             chunks_y,
@@ -185,6 +194,7 @@ impl Grid {
             if let Some(c) = self.chunks.get_mut(idx) {
                 c.modified = true;
             }
+            self.mark_dirty(x, y);
         }
     }
 
@@ -198,6 +208,7 @@ impl Grid {
             if let Some(c) = self.chunks.get_mut(idx) {
                 c.modified = true;
             }
+            self.mark_dirty(x, y);
         }
     }
 
@@ -212,9 +223,94 @@ impl Grid {
         }
     }
 
+    #[inline]
+    pub fn mark_dirty(&mut self, x: i32, y: i32) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let (cx, cy, _, _) = self.chunk_at(x, y);
+        self.expand_chunk_dirty(cx, cy, x, y);
+        let cs = self.chunk_size as i32;
+        let lx = x - cx * cs;
+        let ly = y - cy * cs;
+        if lx <= 1 {
+            self.expand_chunk_dirty(cx - 1, cy, x - 1, y);
+        }
+        if lx >= cs - 2 {
+            self.expand_chunk_dirty(cx + 1, cy, x + 1, y);
+        }
+        if ly <= 1 {
+            self.expand_chunk_dirty(cx, cy - 1, x, y - 1);
+        }
+        if ly >= cs - 2 {
+            self.expand_chunk_dirty(cx, cy + 1, x, y + 1);
+        }
+    }
+
+    #[inline]
+    fn expand_chunk_dirty(&mut self, cx: i32, cy: i32, x: i32, y: i32) {
+        if cx < 0 || cy < 0 || cx >= self.chunks_x as i32 || cy >= self.chunks_y as i32 {
+            return;
+        }
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let idx = self.chunk_index(cx, cy);
+        let min_x = (x - 1).max(0);
+        let min_y = (y - 1).max(0);
+        let max_x = (x + 1).min(self.width as i32 - 1);
+        let max_y = (y + 1).min(self.height as i32 - 1);
+        let chunk = &mut self.chunks[idx];
+        match chunk.dirty {
+            None => chunk.dirty = Some((min_x, min_y, max_x, max_y)),
+            Some((dx0, dy0, dx1, dy1)) => {
+                chunk.dirty = Some((
+                    dx0.min(min_x),
+                    dy0.min(min_y),
+                    dx1.max(max_x),
+                    dy1.max(max_y),
+                ));
+            }
+        }
+    }
+
+    #[inline]
+    pub fn cells_swap(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) {
+        if !self.in_bounds(x1, y1) || !self.in_bounds(x2, y2) {
+            return;
+        }
+        let i1 = self.idx(x1, y1);
+        let i2 = self.idx(x2, y2);
+        let tmp = self.cells[i1];
+        self.cells[i1] = self.cells[i2];
+        self.cells[i2] = tmp;
+        self.cells[i2].updated_this_tick = true;
+        self.mark_dirty(x1, y1);
+        self.mark_dirty(x2, y2);
+    }
+
+    #[inline]
+    pub fn set_cell_index(&mut self, i: usize, cell: Cell) {
+        self.cells[i] = cell;
+        let x = (i % self.width) as i32;
+        let y = (i / self.width) as i32;
+        self.mark_dirty(x, y);
+    }
+
     pub fn reset_tick_flags(&mut self) {
-        for c in &mut self.cells {
-            c.updated_this_tick = false;
+        for cy in 0..self.chunks_y {
+            for cx in 0..self.chunks_x {
+                if !self.chunks[cy * self.chunks_x + cx].active {
+                    continue;
+                }
+                let (x0, y0, x1, y1) = self.chunk_bounds(cx, cy);
+                for y in y0..y1 {
+                    let row = y as usize * self.width;
+                    for x in x0..x1 {
+                        self.cells[row + x as usize].updated_this_tick = false;
+                    }
+                }
+            }
         }
     }
 

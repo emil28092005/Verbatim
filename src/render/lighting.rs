@@ -1,5 +1,5 @@
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LightSource {
@@ -67,7 +67,7 @@ pub fn material_light(material: MaterialId) -> Option<LightSource> {
     }
 }
 
-pub fn gather_sources(grid: &Grid) -> Vec<LightSource> {
+pub fn gather_sources(grid: &ChunkedGrid) -> Vec<LightSource> {
     let mut sources = Vec::new();
     let w = grid.width;
     let h = grid.height;
@@ -85,7 +85,7 @@ pub fn gather_sources(grid: &Grid) -> Vec<LightSource> {
 }
 
 pub fn gather_sources_in_range(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     cam_x: i32,
     cam_y: i32,
     view_w: usize,
@@ -94,9 +94,17 @@ pub fn gather_sources_in_range(
 ) -> Vec<LightSource> {
     let mut sources = Vec::new();
     let min_x = (cam_x - margin).max(0);
-    let max_x = (cam_x + view_w as i32 + margin).min(grid.width as i32);
+    let max_x = if grid.is_infinite() {
+        cam_x + view_w as i32 + margin
+    } else {
+        (cam_x + view_w as i32 + margin).min(grid.width as i32)
+    };
     let min_y = (cam_y - margin).max(0);
-    let max_y = (cam_y + view_h as i32 + margin).min(grid.height as i32);
+    let max_y = if grid.is_infinite() {
+        cam_y + view_h as i32 + margin
+    } else {
+        (cam_y + view_h as i32 + margin).min(grid.height as i32)
+    };
     for y in min_y..max_y {
         for x in min_x..max_x {
             let cell = grid.get(x, y);
@@ -111,7 +119,7 @@ pub fn gather_sources_in_range(
 }
 
 pub fn compute_lighting(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     cam_x: i32,
     cam_y: i32,
     view_w: usize,
@@ -176,7 +184,7 @@ pub fn compute_lighting(
     grid_light
 }
 
-pub fn line_of_sight(grid: &Grid, x0: i32, y0: i32, x1: i32, y1: i32) -> bool {
+pub fn line_of_sight(grid: &ChunkedGrid, x0: i32, y0: i32, x1: i32, y1: i32) -> bool {
     let mut x = x0;
     let mut y = y0;
     let dx = (x1 - x0).abs();
@@ -236,10 +244,10 @@ pub fn ambient_light() -> [u8; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::grid::Grid;
+    use crate::world::chunked_grid::ChunkedGrid;
 
-    fn grid_with_lava() -> (Grid, i32, i32) {
-        let mut grid = Grid::new();
+    fn grid_with_lava() -> (ChunkedGrid, i32, i32) {
+        let mut grid = ChunkedGrid::with_size(250, 250);
         grid.set_material(10, 10, MaterialId::Lava);
         (grid, 10, 10)
     }
@@ -267,7 +275,7 @@ mod tests {
 
     #[test]
     fn walls_block_light() {
-        let mut grid = Grid::new();
+        let mut grid = ChunkedGrid::with_size(250, 250);
         grid.set_material(5, 10, MaterialId::Lava);
         for y in 7..13 {
             grid.set_material(8, y, MaterialId::Stone);

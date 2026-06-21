@@ -31,6 +31,13 @@ impl Player {
         }
     }
 
+    pub fn set_position(&self, manager: &mut EntityManager, cx: f32, cy: f32) {
+        if let Some(e) = manager.get_mut(self.entity_id) {
+            e.cx = cx;
+            e.cy = cy;
+        }
+    }
+
     pub fn move_left(&mut self, manager: &mut EntityManager) {
         if let Some(e) = manager.get_mut(self.entity_id) {
             e.set_horizontal_vel(-self.move_speed);

@@ -44,8 +44,9 @@ bool line_of_sight(ivec2 a, ivec2 b) {
     int err = d.x - d.y;
     while (true) {
         if (p == b) return true;
-        if (p.x < 0 || p.x >= pc.world_size.x || p.y < 0 || p.y >= pc.world_size.y) return false;
-        uint m = grid.cells[p.y * pc.world_size.x + p.x];
+        ivec2 vp = p - pc.cam_pos;
+        if (vp.x < 0 || vp.x >= pc.world_size.x || vp.y < 0 || vp.y >= pc.world_size.y) return false;
+        uint m = grid.cells[vp.y * pc.world_size.x + vp.x];
         if (is_solid(m)) return false;
         int e2 = 2 * err;
         if (e2 > -d.y) { err -= d.y; p.x += s.x; }

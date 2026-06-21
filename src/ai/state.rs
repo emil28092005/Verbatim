@@ -1,7 +1,7 @@
 use crate::entity::{EntityKind, EntityManager};
 use crate::game::Game;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 use crate::world::material::MaterialRegistry;
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +60,7 @@ pub struct CellInfo {
 }
 
 impl CellInfo {
-    pub fn from_grid(grid: &Grid, x: i32, y: i32) -> Self {
+    pub fn from_grid(grid: &ChunkedGrid, x: i32, y: i32) -> Self {
         if !grid.in_bounds(x, y) {
             return Self {
                 x,
@@ -157,7 +157,7 @@ pub fn build_game_state(game: &Game, view_w: usize, view_h: usize) -> GameState 
 }
 
 pub fn render_view(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     cam_x: i32,
     cam_y: i32,

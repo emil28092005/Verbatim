@@ -1,5 +1,5 @@
 use verbatim::world::cell::{Cell, MaterialId};
-use verbatim::world::chunk::{world_to_chunk, Chunk, CHUNK_SIZE};
+use verbatim::world::chunk::{CHUNK_SIZE, Chunk, world_to_chunk};
 use verbatim::world::grid::Grid;
 
 #[test]

@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::entity::player::Player;
-use crate::entity::{EntityKind, EntityManager, ItemManager, ItemType};
+use crate::entity::{EntityKind, EntityManager, ItemManager};
 use crate::input::{Action, InputHandler};
 use crate::physics::collision::resolve_grid_collision;
 use crate::physics::projectile::{ProjectileManager, ProjectileType};
@@ -9,12 +9,15 @@ use crate::physics::verlet::VerletSolver;
 use crate::render::lighting;
 use crate::render::Renderer;
 use crate::ui::UiLayer;
+use crate::world::cache::WorldCache;
 use crate::world::cell::MaterialId;
 use crate::world::cellular::CellularAutomaton;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
+use crate::world::grid::{WORLD_H, WORLD_W};
+use crate::world::worldgen::WorldGenerator;
 
 pub struct Game {
-    pub grid: Grid,
+    pub grid: ChunkedGrid,
     pub ca: CellularAutomaton,
     pub verlet: VerletSolver,
     pub entities: EntityManager,
@@ -43,14 +46,20 @@ pub struct Game {
     pub inventory_open: bool,
     pub inventory_mouse_x: i32,
     pub inventory_mouse_y: i32,
+    pub seed: u64,
+    pub cache_dir: Option<String>,
 }
 
 impl Game {
     pub fn new() -> Self {
+        Self::new_with_size(WORLD_W, WORLD_H)
+    }
+
+    fn new_with_size(width: usize, height: usize) -> Self {
         let mut entities = EntityManager::new();
         let player = Player::new(&mut entities);
         Self {
-            grid: Grid::new(),
+            grid: ChunkedGrid::with_size(width, height),
             ca: CellularAutomaton::new(),
             verlet: VerletSolver::new(),
             entities,
@@ -79,184 +88,98 @@ impl Game {
             inventory_open: false,
             inventory_mouse_x: 0,
             inventory_mouse_y: 0,
+            seed: 0x1234567890ABCDEF,
+            cache_dir: None,
+        }
+    }
+
+    pub fn new_random() -> Self {
+        let seed = crate::world::cellular::random_seed();
+        let cache_dir = Some("cache/worlds".to_string());
+        let mut entities = EntityManager::new();
+        let player = Player::new(&mut entities);
+        let mut ca = CellularAutomaton::new();
+        ca.seed(seed);
+        Self {
+            grid: ChunkedGrid::infinite(seed, cache_dir.clone()),
+            ca,
+            verlet: VerletSolver::new(),
+            entities,
+            projectiles: ProjectileManager::new(),
+            items: ItemManager::new(),
+            player,
+            input: InputHandler::new(),
+            ui: UiLayer::new(),
+            cam_x: 0,
+            cam_y: 0,
+            cam_offset_x: 0,
+            cam_offset_y: 0,
+            running: true,
+            tick: 0,
+            fixed_dt: Duration::from_millis(16),
+            accumulator: Duration::ZERO,
+            last_time: Instant::now(),
+            last_shot_tick: 0,
+            shot_cooldown: 8,
+            fireball_mode: false,
+            corpse_decomp_timer: 0,
+            kills: 0,
+            score: 0,
+            depth: 1,
+            fps: 0.0,
+            inventory_open: false,
+            inventory_mouse_x: 0,
+            inventory_mouse_y: 0,
+            seed,
+            cache_dir,
         }
     }
 
     pub fn init_world(&mut self) {
-        let w = self.grid.width;
-        let h = self.grid.height;
-
-        for x in 0..w {
-            self.grid
-                .set_material(x as i32, (h - 1) as i32, MaterialId::Stone);
-            self.grid
-                .set_material(x as i32, (h - 2) as i32, MaterialId::Dirt);
-        }
-
-        let surface_noise = |x: i32| -> i32 {
-            let base = (h as i32 - 3) - ((x as f32 * 0.08).sin() * 4.0) as i32;
-            let detail = ((x as f32 * 0.23).sin() * 2.0) as i32;
-            (base + detail).max(10).min(h as i32 - 3)
-        };
-
-        for x in 0..w {
-            let surface = surface_noise(x as i32);
-            let biome = x / (w / 4);
-
-            for y in surface..(h as i32 - 2) {
-                if y == surface {
-                    let mat = match biome {
-                        0 => MaterialId::Grass,
-                        1 => MaterialId::Grass,
-                        2 => MaterialId::Dirt,
-                        _ => MaterialId::Stone,
-                    };
-                    self.grid.set_material(x as i32, y, mat);
-                } else if y > surface + 8 {
-                    self.grid.set_material(x as i32, y, MaterialId::Stone);
+        let cache_dir = self.cache_dir.clone();
+        let (px, py) = if let Some(ref root) = cache_dir {
+            let has_meta = WorldCache::meta_exists(root, self.seed);
+            if has_meta {
+                if let Err(e) = WorldCache::load_meta(
+                    root,
+                    self.seed,
+                    &mut self.player,
+                    &mut self.entities,
+                    &mut self.items,
+                ) {
+                    eprintln!("World cache meta load failed: {}", e);
                 } else {
-                    self.grid.set_material(x as i32, y, MaterialId::Dirt);
+                    let (px, py) = self.player.center(&self.entities);
+                    self.grid.ensure_loaded(px as i32, py as i32, 3);
+                    self.center_camera_on(px, py);
+                    return;
                 }
             }
-        }
-
-        for _ in 0..8 {
-            let cave_x = (self.ca.random_u32() % (w as u32 - 20) + 10) as i32;
-            let cave_y = (self.ca.random_u32() % (h as u32 / 3) + (h as u32 / 3) * 2) as i32;
-            let cave_r = (self.ca.random_u32() % 4 + 3) as i32;
-            for dy in -cave_r..=cave_r {
-                for dx in -cave_r..=cave_r {
-                    if dx * dx + dy * dy <= cave_r * cave_r {
-                        let cx = cave_x + dx;
-                        let cy = cave_y + dy;
-                        if cx > 1 && cx < w as i32 - 2 && cy > 1 && cy < h as i32 - 2 {
-                            self.grid.set(cx, cy, crate::world::cell::Cell::empty());
-                        }
-                    }
-                }
-            }
-        }
-
-        for tree_x in [60, 75, 130, 145, 220] {
-            let s = surface_noise(tree_x);
-            for y in (s - 6)..s {
-                if y > 5 {
-                    self.grid.set_material(tree_x, y, MaterialId::Wood);
-                }
-            }
-            for dy in -2..=0 {
-                for dx in -2..=2 {
-                    if dx * dx + dy * dy <= 5 {
-                        let cx = tree_x + dx;
-                        let cy = s - 6 + dy;
-                        if cx > 1 && cx < w as i32 - 2 && cy > 1 {
-                            if self.grid.get(cx, cy).is_empty() {
-                                self.grid.set_material(cx, cy, MaterialId::Grass);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let water_x = 40;
-        for x in water_x - 10..=water_x + 10 {
-            let s = surface_noise(x);
-            for y in s - 6..s {
-                if self.grid.get(x, y).is_empty() {
-                    self.grid.set_material(x, y, MaterialId::Water);
-                }
-            }
-        }
-
-        let lava_x = 200;
-        for x in lava_x - 8..=lava_x + 8 {
-            let s = surface_noise(x);
-            for y in s - 4..s {
-                if self.grid.get(x, y).is_empty() {
-                    self.grid.set_material(x, y, MaterialId::Lava);
-                }
-            }
-        }
-
-        let sand_x = 160;
-        for dx in -10..=10 {
-            let s = surface_noise(sand_x + dx);
-            let pile_h = (10.0 - (dx as f32).abs() * 0.8) as i32;
-            for dy in 0..pile_h {
-                let y = s - 1 - dy;
-                if y > 5 && self.grid.get(sand_x + dx, y).is_empty() {
-                    self.grid.set_material(sand_x + dx, y, MaterialId::Sand);
-                }
-            }
-        }
-
-        let acid_x = 20;
-        for x in acid_x - 4..=acid_x + 4 {
-            let s = surface_noise(x);
-            for y in s - 3..s {
-                if self.grid.get(x, y).is_empty() {
-                    self.grid.set_material(x, y, MaterialId::Acid);
-                }
-            }
-        }
-
-        let wall_x = 110;
-        let wall_s = surface_noise(wall_x);
-        for y in (wall_s - 5)..wall_s {
-            self.grid.set_material(wall_x, y, MaterialId::Stone);
-            self.grid.set_material(wall_x + 1, y, MaterialId::Stone);
-        }
-
-        for _ in 0..6 {
-            let px = (self.ca.random_u32() % (w as u32 - 20) + 10) as i32;
-            let py = (self.ca.random_u32() % (h as u32 / 3) + (h as u32 / 3) * 2) as i32;
-            for dy in 0..8 {
-                for dx in -1..=1 {
-                    let cx = px + dx;
-                    let cy = py + dy;
-                    if cx > 1 && cx < w as i32 - 2 && cy < h as i32 - 3 {
-                        self.grid.set_material(cx, cy, MaterialId::Stone);
-                    }
-                }
-            }
-        }
-
-        self.grid.fill_border(MaterialId::Stone);
-
-        let cx = (w / 2) as f32;
-        let surface_x = cx as i32;
-        let mut surface_y = h as i32 - 3;
-        for y in 0..h as i32 {
-            if self.grid.get(surface_x, y).is_solid()
-                && self.grid.get(surface_x, y).material != MaterialId::Stone
+            let (px, py) = WorldGenerator::new(&mut self.ca).generate(
+                &mut self.grid,
+                &mut self.items,
+                &mut self.player,
+                &mut self.entities,
+                self.depth,
+            );
+            self.center_camera_on(px, py);
+            if let Err(e) = WorldCache::save_meta(root, self.seed, px, py, self.depth, &self.items)
             {
-                surface_y = y;
-                break;
+                eprintln!("World cache meta save failed: {}", e);
             }
-        }
-        let stair_y = (h as i32 - 2).max(surface_y + 2);
-        self.grid
-            .set_material(surface_x, stair_y, MaterialId::Stairs);
-
-        let cy = (surface_y as f32) - 5.0;
-        self.player.spawn_at(&mut self.entities, cx, cy);
-
-        let (px, py) = self.player.center(&self.entities);
-        self.center_camera_on(px, py);
-
-        self.items
-            .spawn(ItemType::Sword, px as i32 - 6, py as i32 + 1);
-        self.items
-            .spawn(ItemType::HealthPotion, px as i32 + 6, py as i32 + 1);
-        self.items
-            .spawn(ItemType::LeatherArmor, px as i32 - 3, py as i32 - 8);
-        self.items
-            .spawn(ItemType::Bow, px as i32 + 10, py as i32 + 1);
-        self.items
-            .spawn(ItemType::Shield, px as i32 - 10, py as i32 + 1);
-        self.items
-            .spawn(ItemType::ManaPotion, px as i32 + 3, py as i32 - 6);
+            (px, py)
+        } else {
+            let (px, py) = WorldGenerator::new(&mut self.ca).generate(
+                &mut self.grid,
+                &mut self.items,
+                &mut self.player,
+                &mut self.entities,
+                self.depth,
+            );
+            self.center_camera_on(px, py);
+            (px, py)
+        };
+        let _ = (px, py);
     }
 
     pub fn center_camera_on(&mut self, px: f32, py: f32) {
@@ -525,6 +448,7 @@ impl Game {
     pub fn fixed_update(&mut self) {
         self.tick += 1;
 
+        self.stream_chunks();
         self.update_active_chunks();
         self.ca.step(&mut self.grid);
 
@@ -604,7 +528,7 @@ impl Game {
             return;
         }
         self.depth += 1;
-        self.grid = Grid::new();
+        self.grid = ChunkedGrid::with_size(self.grid.width, self.grid.height);
         self.entities = EntityManager::new();
         self.player = Player::new(&mut self.entities);
         self.projectiles = ProjectileManager::new();
@@ -655,12 +579,80 @@ impl Game {
         self.ui.add_message(&format!("Dropped {}", item.name()));
     }
 
+    fn stream_chunks(&mut self) {
+        if !self.grid.is_infinite() && self.grid.width <= 2048 {
+            return;
+        }
+        let (px, py) = self.player.center(&self.entities);
+        let px = px as i32;
+        let py = py as i32;
+        let (pcx, pcy, _, _) = self.grid.chunk_at(px, py);
+        let radius = 3;
+        let chunk_size = self.grid.chunk_size as i32;
+
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let cx = pcx + dx;
+                let cy = pcy + dy;
+                let ox = cx * chunk_size;
+                let oy = cy * chunk_size;
+                if !self.grid.in_bounds(ox, oy) {
+                    continue;
+                }
+                self.grid.ensure_chunk(cx, cy);
+                if !self.grid.is_chunk_generated(cx, cy) {
+                    WorldGenerator::new(&mut self.ca).generate_chunk(&mut self.grid, cx, cy);
+                }
+            }
+        }
+
+        if let Some(ref dir) = self.cache_dir {
+            if self.tick % 60 == 0 {
+                let save_radius = radius + 2;
+                for (cx, cy) in self.grid.all_chunk_coords() {
+                    let dx = (cx - pcx).abs();
+                    let dy = (cy - pcy).abs();
+                    if dx > save_radius || dy > save_radius {
+                        if self.grid.is_chunk_modified(cx, cy) {
+                            let path =
+                                crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
+                            let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
+                        }
+                    }
+                }
+            }
+        }
+
+        if self.tick % 60 == 0 {
+            let unload_radius = radius + 4;
+            let to_unload: Vec<(i32, i32)> = self
+                .grid
+                .all_chunk_coords()
+                .into_iter()
+                .filter(|(cx, cy)| {
+                    let dx = (cx - pcx).abs();
+                    let dy = (cy - pcy).abs();
+                    dx > unload_radius || dy > unload_radius
+                })
+                .collect();
+            for (cx, cy) in to_unload {
+                if self.grid.is_chunk_modified(cx, cy) {
+                    if let Some(ref dir) = self.cache_dir {
+                        let path = crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
+                        let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
+                    }
+                }
+                self.grid.unload_chunk(cx, cy);
+            }
+        }
+    }
+
     fn update_active_chunks(&mut self) {
         self.grid.deactivate_all();
 
         for e in self.entities.all() {
             let (cx, cy) = e.center();
-            self.grid.activate_around(cx as i32, cy as i32, 2);
+            self.grid.activate_around(cx as i32, cy as i32, 1);
         }
 
         for p in self.projectiles.all() {
@@ -672,12 +664,21 @@ impl Game {
         }
 
         let chunk_size = self.grid.chunk_size as i32;
-        for cy in 0..self.grid.chunks_y as i32 {
-            for cx in 0..self.grid.chunks_x as i32 {
-                let idx = self.grid.chunk_index(cx, cy);
-                if self.grid.chunks[idx].modified || self.grid.chunks[idx].was_modified {
+        let (px, py) = self.player.center(&self.entities);
+        let pcx = px as i32 / chunk_size;
+        let pcy = py as i32 / chunk_size;
+        let dirty_radius = if self.grid.is_infinite() { 1 } else { 100000 };
+
+        for (cx, cy) in self.grid.all_chunk_coords() {
+            if self.grid.is_chunk_modified(cx, cy) {
+                if (cx - pcx).abs() <= dirty_radius && (cy - pcy).abs() <= dirty_radius {
                     self.grid
                         .activate_around(cx * chunk_size, cy * chunk_size, 1);
+                }
+            }
+            if self.grid.get_chunk_dirty(cx, cy).is_some() {
+                if (cx - pcx).abs() <= dirty_radius && (cy - pcy).abs() <= dirty_radius {
+                    self.grid.set_chunk_active(cx, cy, true);
                 }
             }
         }
@@ -1386,6 +1387,69 @@ impl Game {
         }
     }
 
+    fn find_spawn_location(&self, near_x: i32, near_y: i32, radius: i32) -> Option<(i32, i32)> {
+        for r in 0..=radius {
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs() + dy.abs() != r {
+                        continue;
+                    }
+                    let x = near_x + dx;
+                    let y = near_y + dy;
+                    if !self.grid.in_bounds(x, y) || !self.grid.in_bounds(x, y - 3) {
+                        continue;
+                    }
+                    if !self.grid.get(x, y).is_empty() || !self.grid.get(x, y + 1).is_solid() {
+                        continue;
+                    }
+                    let mut clear = true;
+                    for k in -3..=0 {
+                        if !self.grid.get(x, y + k).is_empty() {
+                            clear = false;
+                            break;
+                        }
+                    }
+                    if clear {
+                        return Some((x, y - 3));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_surface_spawn(
+        &self,
+        px: f32,
+        py: f32,
+        offset: i32,
+        height_offset: i32,
+    ) -> Option<(i32, i32)> {
+        let spawn_x = px as i32 + offset;
+        if !self.grid.in_bounds(spawn_x, 0) {
+            return None;
+        }
+        let search_top = 0;
+        let search_bottom = if self.grid.is_infinite() {
+            py as i32 + 50
+        } else {
+            self.grid.height as i32 - 3
+        };
+        let mut surface_y = search_bottom;
+        for y in search_top..=search_bottom {
+            let cell = self.grid.get(spawn_x, y);
+            if cell.is_solid() && cell.material != MaterialId::Stone {
+                surface_y = y;
+                break;
+            }
+        }
+        let spawn_y = surface_y - height_offset;
+        if !self.grid.in_bounds(spawn_x, spawn_y) {
+            return None;
+        }
+        Some((spawn_x, spawn_y))
+    }
+
     fn try_spawn_goblin(&mut self) {
         let max_goblins = 3usize + self.depth.min(5) as usize;
         let alive_goblins = self
@@ -1398,32 +1462,22 @@ impl Game {
             return;
         }
 
-        let (px, _py) = self.player.center(&self.entities);
-        let spawn_x = px as i32 + if px as i32 % 2 == 0 { 15 } else { -15 };
-        if !self.grid.in_bounds(spawn_x, 0) {
-            return;
-        }
+        let (px, py) = self.player.center(&self.entities);
+        let offset = if px as i32 % 2 == 0 { 15 } else { -15 };
+        let spawn = if self.depth <= 3 {
+            self.find_surface_spawn(px, py, offset, 5)
+        } else {
+            self.find_spawn_location(px as i32 + offset, py as i32, 3)
+        };
 
-        let mut surface_y = self.grid.height as i32 - 3;
-        for y in 0..self.grid.height as i32 {
-            let cell = self.grid.get(spawn_x, y);
-            if cell.is_solid() && cell.material != MaterialId::Stone {
-                surface_y = y;
-                break;
+        if let Some((spawn_x, spawn_y)) = spawn {
+            let id = self.entities.spawn(EntityKind::Goblin);
+            if let Some(g) = self.entities.get_mut(id) {
+                g.build_humanoid(spawn_x as f32, spawn_y as f32);
+                g.health += self.depth as f32 * 5.0;
+                g.max_health += self.depth as f32 * 5.0;
+                g.strength += self.depth;
             }
-        }
-        let spawn_y = surface_y - 5;
-
-        if !self.grid.in_bounds(spawn_x, spawn_y) {
-            return;
-        }
-
-        let id = self.entities.spawn(EntityKind::Goblin);
-        if let Some(g) = self.entities.get_mut(id) {
-            g.build_humanoid(spawn_x as f32, spawn_y as f32);
-            g.health += self.depth as f32 * 5.0;
-            g.max_health += self.depth as f32 * 5.0;
-            g.strength += self.depth;
         }
     }
 
@@ -1439,31 +1493,21 @@ impl Game {
             return;
         }
 
-        let (px, _py) = self.player.center(&self.entities);
-        let spawn_x = px as i32 + if px as i32 % 2 == 0 { -18 } else { 18 };
-        if !self.grid.in_bounds(spawn_x, 0) {
-            return;
-        }
+        let (px, py) = self.player.center(&self.entities);
+        let offset = if px as i32 % 2 == 0 { -18 } else { 18 };
+        let spawn = if self.depth <= 3 {
+            self.find_surface_spawn(px, py, offset, 3)
+        } else {
+            self.find_spawn_location(px as i32 + offset, py as i32, 3)
+        };
 
-        let mut surface_y = self.grid.height as i32 - 3;
-        for y in 0..self.grid.height as i32 {
-            let cell = self.grid.get(spawn_x, y);
-            if cell.is_solid() && cell.material != MaterialId::Stone {
-                surface_y = y;
-                break;
+        if let Some((spawn_x, spawn_y)) = spawn {
+            let id = self.entities.spawn(EntityKind::Slime);
+            if let Some(s) = self.entities.get_mut(id) {
+                s.build_humanoid(spawn_x as f32, spawn_y as f32);
+                s.health += self.depth as f32 * 3.0;
+                s.max_health += self.depth as f32 * 3.0;
             }
-        }
-        let spawn_y = surface_y - 3;
-
-        if !self.grid.in_bounds(spawn_x, spawn_y) {
-            return;
-        }
-
-        let id = self.entities.spawn(EntityKind::Slime);
-        if let Some(s) = self.entities.get_mut(id) {
-            s.build_humanoid(spawn_x as f32, spawn_y as f32);
-            s.health += self.depth as f32 * 3.0;
-            s.max_health += self.depth as f32 * 3.0;
         }
     }
 }

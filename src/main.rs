@@ -8,6 +8,7 @@ use verbatim::render::lighting;
 use verbatim::render::terminal::TerminalRenderer;
 use verbatim::render::window_input::WindowInput;
 use verbatim::world::cell::MaterialId;
+use verbatim::world::chunked_grid::ChunkedGrid;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
@@ -42,6 +43,9 @@ struct Cli {
     #[arg(long, default_value = "benchmark_results.json")]
     benchmark_output: String,
 
+    #[arg(long, default_value = "surface")]
+    benchmark_biome: String,
+
     #[arg(long, default_value_t = 5)]
     tape_interval: u32,
 
@@ -58,7 +62,7 @@ trait GpuRenderer {
         Self: Sized;
     fn render(
         &mut self,
-        grid: &verbatim::world::grid::Grid,
+        grid: &ChunkedGrid,
         entities: &verbatim::entity::EntityManager,
         items: &verbatim::entity::item::ItemManager,
         ui: &verbatim::ui::UiLayer,
@@ -76,7 +80,7 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
     }
     fn render(
         &mut self,
-        grid: &verbatim::world::grid::Grid,
+        grid: &ChunkedGrid,
         entities: &verbatim::entity::EntityManager,
         items: &verbatim::entity::item::ItemManager,
         ui: &verbatim::ui::UiLayer,
@@ -102,7 +106,7 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
     }
     fn render(
         &mut self,
-        grid: &verbatim::world::grid::Grid,
+        grid: &ChunkedGrid,
         entities: &verbatim::entity::EntityManager,
         items: &verbatim::entity::item::ItemManager,
         ui: &verbatim::ui::UiLayer,
@@ -139,7 +143,7 @@ fn main() {
                 eprintln!("PANIC: {}", info);
             }));
             let mut renderer = TerminalRenderer::new();
-            let mut game = Game::new();
+            let mut game = Game::new_random();
             game.run(&mut renderer);
         }
         "ascii" => {
@@ -216,13 +220,13 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
             eprintln!("Vulkan init failed: {e}");
             eprintln!("Falling back to terminal mode...");
             let mut renderer = TerminalRenderer::new();
-            let mut game = Game::new();
+            let mut game = Game::new_random();
             game.run(&mut renderer);
             return;
         }
     };
 
-    let mut game = Game::new();
+    let mut game = Game::new_random();
     game.init_world();
 
     let mut input = WindowInput::new();
@@ -533,19 +537,25 @@ fn run_benchmark_mode(cli: &Cli) {
     let ticks = cli.benchmark_ticks;
     let renderer_type = cli.benchmark_renderer.as_str();
     let output_path = cli.benchmark_output.as_str();
+    let biome = cli.benchmark_biome.as_str();
 
-    eprintln!("Benchmark: {} ticks, renderer={}", ticks, renderer_type);
+    eprintln!(
+        "Benchmark: {} ticks, renderer={}, biome={}",
+        ticks, renderer_type, biome
+    );
 
     match renderer_type {
         "ascii" => run_benchmark_inner::<verbatim::render::vulkan::VulkanRenderer>(
             ticks,
             output_path,
             "ascii",
+            biome,
         ),
         "graphics" => run_benchmark_inner::<verbatim::render::graphics::GraphicsRenderer>(
             ticks,
             output_path,
             "graphics",
+            biome,
         ),
         _ => {
             eprintln!(
@@ -557,7 +567,12 @@ fn run_benchmark_mode(cli: &Cli) {
     }
 }
 
-fn run_benchmark_inner<R: GpuRenderer>(ticks: u32, output_path: &str, mode_name: &str) {
+fn run_benchmark_inner<R: GpuRenderer>(
+    ticks: u32,
+    output_path: &str,
+    mode_name: &str,
+    biome: &str,
+) {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let window = event_loop
         .create_window(
@@ -576,8 +591,24 @@ fn run_benchmark_inner<R: GpuRenderer>(ticks: u32, output_path: &str, mode_name:
         }
     };
 
-    let mut game = Game::new();
+    let mut game = Game::new_random();
     game.init_world();
+
+    let chunk_size = game.grid.chunk_size as i32;
+    let (px, _py) = game.player.center(&game.entities);
+    match biome {
+        "caves" => {
+            let cave_y = 2 * chunk_size + chunk_size / 2;
+            game.player
+                .set_position(&mut game.entities, px, cave_y as f32);
+        }
+        "dungeon" => {
+            let dungeon_y = 6 * chunk_size + chunk_size / 2;
+            game.player
+                .set_position(&mut game.entities, px, dungeon_y as f32);
+        }
+        _ => {}
+    }
 
     let mut tick_count = 0u32;
     let mut ca_times_us: Vec<u64> = Vec::with_capacity(ticks as usize);
@@ -908,14 +939,14 @@ fn run_capture(ticks: u32) {
 }
 
 fn dump_view(
-    grid: &verbatim::world::grid::Grid,
+    grid: &ChunkedGrid,
     entities: &verbatim::entity::EntityManager,
     cam_x: i32,
     cam_y: i32,
-    vw: usize,
-    vh: usize,
+    w: usize,
+    h: usize,
 ) -> String {
-    ai::render_view(grid, entities, cam_x, cam_y, vw, vh)
+    ai::render_view(grid, entities, cam_x, cam_y, w, h)
         .lines()
         .enumerate()
         .map(|(i, line)| format!("{:2}{}", (cam_y + i as i32) % 100, line))

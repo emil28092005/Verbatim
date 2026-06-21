@@ -1,5 +1,5 @@
 use crate::world::cell::{Cell, MaterialId};
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub struct CellularAutomaton {
     tick: u64,
@@ -16,6 +16,10 @@ impl CellularAutomaton {
         }
     }
 
+    pub fn seed(&mut self, state: u64) {
+        self.rng_state = state;
+    }
+
     #[inline]
     fn rand(&mut self) -> u32 {
         self.rng_state ^= self.rng_state << 13;
@@ -30,19 +34,37 @@ impl CellularAutomaton {
     }
 
     #[inline]
-    fn apply_cell_rule(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn apply_cell_rule(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.updated_this_tick || cell.is_empty() || cell.is_static() {
             return;
         }
         match cell.material {
             MaterialId::Sand => self.update_sand(grid, x, y),
-            MaterialId::Water => self.update_water(grid, x, y),
-            MaterialId::Lava => self.update_lava(grid, x, y),
-            MaterialId::Steam => self.update_steam(grid, x, y),
-            MaterialId::Fire => self.update_fire(grid, x, y),
-            MaterialId::Smoke => self.update_smoke(grid, x, y),
-            MaterialId::Acid => self.update_acid(grid, x, y),
+            MaterialId::Water => {
+                self.update_water(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
+            MaterialId::Lava => {
+                self.update_lava(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
+            MaterialId::Steam => {
+                self.update_steam(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
+            MaterialId::Fire => {
+                self.update_fire(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
+            MaterialId::Smoke => {
+                self.update_smoke(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
+            MaterialId::Acid => {
+                self.update_acid(grid, x, y);
+                grid.mark_dirty(x, y);
+            }
             MaterialId::Flesh => self.update_flesh(grid, x, y),
             MaterialId::Grass => self.update_grass(grid, x, y),
             MaterialId::Dirt => self.update_dirt(grid, x, y),
@@ -61,40 +83,38 @@ impl CellularAutomaton {
         (self.rand() as usize) % max
     }
 
-    pub fn step(&mut self, grid: &mut Grid) {
-        grid.reset_tick_flags();
+    pub fn step(&mut self, grid: &mut ChunkedGrid) {
         let flip = self.rand_bool();
-        let chunk_w = grid.chunk_size;
-        let chunks_x = grid.chunks_x;
-        let chunks_y = grid.chunks_y;
-        let grid_w = grid.width;
 
-        for cy in (0..chunks_y).rev() {
-            let y0 = cy * chunk_w;
-            let y1 = ((cy + 1) * chunk_w).min(grid.height);
-            for y_idx in (y0..y1).rev() {
-                let y = y_idx as i32;
+        let mut active = grid.active_chunks();
+        active.sort_by(|(ax, ay), (bx, by)| by.cmp(ay).then(bx.cmp(ax)));
+
+        for (cx, cy) in active {
+            let dirty = grid.get_chunk_dirty(cx, cy);
+            if dirty.is_none() {
+                continue;
+            }
+            let (min_x, min_y, max_x, max_y) = dirty.unwrap();
+
+            grid.set_chunk_dirty(cx, cy, None);
+
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let mut cell = grid.get(x, y);
+                    cell.updated_this_tick = false;
+                    grid.set(x, y, cell);
+                }
+            }
+            grid.set_chunk_dirty(cx, cy, None);
+
+            for y in (min_y..=max_y).rev() {
                 if flip {
-                    for cx in 0..chunks_x {
-                        if !grid.is_chunk_active(cx as i32, cy as i32) {
-                            continue;
-                        }
-                        let x0 = cx * chunk_w;
-                        let x1 = ((cx + 1) * chunk_w).min(grid_w);
-                        for x in x0..x1 {
-                            self.apply_cell_rule(grid, x as i32, y);
-                        }
+                    for x in min_x..=max_x {
+                        self.apply_cell_rule(grid, x, y);
                     }
                 } else {
-                    for cx in (0..chunks_x).rev() {
-                        if !grid.is_chunk_active(cx as i32, cy as i32) {
-                            continue;
-                        }
-                        let x0 = cx * chunk_w;
-                        let x1 = ((cx + 1) * chunk_w).min(grid_w);
-                        for x in (x0..x1).rev() {
-                            self.apply_cell_rule(grid, x as i32, y);
-                        }
+                    for x in (min_x..=max_x).rev() {
+                        self.apply_cell_rule(grid, x, y);
                     }
                 }
             }
@@ -104,15 +124,17 @@ impl CellularAutomaton {
         self.tick += 1;
     }
 
-    fn try_move_down(&mut self, grid: &mut Grid, x: i32, y: i32, _mat: MaterialId, density: f32) {
+    fn try_move_down(
+        &mut self,
+        grid: &mut ChunkedGrid,
+        x: i32,
+        y: i32,
+        _mat: MaterialId,
+        density: f32,
+    ) {
         let below = grid.get(x, y + 1);
         if below.is_empty() || (below.is_liquid() && below.density() < density) {
-            let src = grid.get(x, y);
-            let i_dst = grid.idx(x, y + 1);
-            let i_src = grid.idx(x, y);
-            grid.cells[i_dst] = src;
-            grid.cells[i_dst].updated_this_tick = true;
-            grid.cells[i_src] = Cell::empty();
+            grid.cells_swap(x, y, x, y + 1);
             return;
         }
 
@@ -127,36 +149,25 @@ impl CellularAutomaton {
 
         if can_left && can_right {
             if self.rand_bool() {
-                self.do_swap(grid, x, y, x - dir, y + 1);
+                grid.cells_swap(x, y, x - dir, y + 1);
             } else {
-                self.do_swap(grid, x, y, x + dir, y + 1);
+                grid.cells_swap(x, y, x + dir, y + 1);
             }
         } else if can_left {
-            self.do_swap(grid, x, y, x - dir, y + 1);
+            grid.cells_swap(x, y, x - dir, y + 1);
         } else if can_right {
-            self.do_swap(grid, x, y, x + dir, y + 1);
+            grid.cells_swap(x, y, x + dir, y + 1);
         }
     }
 
-    #[inline]
-    fn do_swap(&self, grid: &mut Grid, x1: i32, y1: i32, x2: i32, y2: i32) {
-        let a = grid.get(x1, y1);
-        let b = grid.get(x2, y2);
-        let i1 = grid.idx(x1, y1);
-        let i2 = grid.idx(x2, y2);
-        grid.cells[i1] = b;
-        grid.cells[i2] = a;
-        grid.cells[i2].updated_this_tick = true;
-    }
-
-    fn update_sand(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_sand(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         self.try_move_down(grid, x, y, MaterialId::Sand, 1.5);
     }
 
-    fn update_water(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_water(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let below = grid.get(x, y + 1);
         if below.is_empty() || (below.is_liquid() && below.density() < 1.0) {
-            self.do_swap(grid, x, y, x, y + 1);
+            grid.cells_swap(x, y, x, y + 1);
             return;
         }
 
@@ -171,27 +182,27 @@ impl CellularAutomaton {
 
         if can_dl && can_dr {
             if self.rand_bool() {
-                self.do_swap(grid, x, y, x - dir, y + 1);
+                grid.cells_swap(x, y, x - dir, y + 1);
             } else {
-                self.do_swap(grid, x, y, x + dir, y + 1);
+                grid.cells_swap(x, y, x + dir, y + 1);
             }
         } else if can_dl {
-            self.do_swap(grid, x, y, x - dir, y + 1);
+            grid.cells_swap(x, y, x - dir, y + 1);
         } else if can_dr {
-            self.do_swap(grid, x, y, x + dir, y + 1);
+            grid.cells_swap(x, y, x + dir, y + 1);
         } else {
             let can_l = grid.in_bounds(x - dir, y) && grid.get(x - dir, y).is_empty();
             let can_r = grid.in_bounds(x + dir, y) && grid.get(x + dir, y).is_empty();
             if can_l && can_r {
                 if self.rand_bool() {
-                    self.do_swap(grid, x, y, x - dir, y);
+                    grid.cells_swap(x, y, x - dir, y);
                 } else {
-                    self.do_swap(grid, x, y, x + dir, y);
+                    grid.cells_swap(x, y, x + dir, y);
                 }
             } else if can_l {
-                self.do_swap(grid, x, y, x - dir, y);
+                grid.cells_swap(x, y, x - dir, y);
             } else if can_r {
-                self.do_swap(grid, x, y, x + dir, y);
+                grid.cells_swap(x, y, x + dir, y);
             }
         }
 
@@ -200,49 +211,47 @@ impl CellularAutomaton {
             let mut new = cell;
             new.material = MaterialId::Steam;
             new.temp = 110.0;
-            let i = grid.idx(x, y);
-            grid.cells[i] = new;
+            grid.set(x, y, new);
         }
     }
 
-    fn update_lava(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_lava(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.temp < 400.0 {
             let mut new = cell;
             new.material = MaterialId::Stone;
-            let i = grid.idx(x, y);
-            grid.cells[i] = new;
+            grid.set(x, y, new);
             return;
         }
 
         let below = grid.get(x, y + 1);
         if below.is_empty() {
-            self.do_swap(grid, x, y, x, y + 1);
+            grid.cells_swap(x, y, x, y + 1);
             return;
         }
 
         let dir = if self.rand_bool() { 1 } else { -1 };
         if grid.in_bounds(x - dir, y + 1) && grid.get(x - dir, y + 1).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y + 1);
+            grid.cells_swap(x, y, x - dir, y + 1);
             return;
         }
         if grid.in_bounds(x + dir, y + 1) && grid.get(x + dir, y + 1).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y + 1);
+            grid.cells_swap(x, y, x + dir, y + 1);
             return;
         }
 
         if self.rand() % 10 == 0 {
             if grid.in_bounds(x - dir, y) && grid.get(x - dir, y).is_empty() {
-                self.do_swap(grid, x, y, x - dir, y);
+                grid.cells_swap(x, y, x - dir, y);
             } else if grid.in_bounds(x + dir, y) && grid.get(x + dir, y).is_empty() {
-                self.do_swap(grid, x, y, x + dir, y);
+                grid.cells_swap(x, y, x + dir, y);
             }
         }
 
         self.lava_interact(grid, x, y);
     }
 
-    fn lava_interact(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn lava_interact(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         for &(dx, dy) in &NEIGHBORS4 {
             let nx = x + dx;
             let ny = y + dy;
@@ -252,84 +261,61 @@ impl CellularAutomaton {
             let neighbor = grid.get(nx, ny);
             match neighbor.material {
                 MaterialId::Water => {
-                    let i_n = grid.idx(nx, ny);
-                    grid.cells[i_n] = Cell::new(MaterialId::Steam);
+                    grid.set(nx, ny, Cell::new(MaterialId::Steam));
                     let lava = grid.get(x, y);
                     let mut new_lava = lava;
                     new_lava.temp -= 50.0;
-                    let i_l = grid.idx(x, y);
-                    grid.cells[i_l] = new_lava;
+                    grid.set(x, y, new_lava);
                 }
                 MaterialId::Wood | MaterialId::Grass | MaterialId::Flesh
                     if neighbor.temp < 300.0 =>
                 {
-                    let i_n = grid.idx(nx, ny);
-                    grid.cells[i_n] = Cell::new(MaterialId::Fire);
+                    grid.set(nx, ny, Cell::new(MaterialId::Fire));
                 }
                 MaterialId::Sand if neighbor.temp > 1700.0 => {
-                    let i_n = grid.idx(nx, ny);
-                    grid.cells[i_n] = Cell::new(MaterialId::Stone);
+                    grid.set(nx, ny, Cell::new(MaterialId::Stone));
                 }
                 _ => {}
             }
         }
     }
 
-    fn update_steam(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_steam(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.temp < 80.0 {
             let mut new = cell;
             new.material = MaterialId::Water;
             new.temp = 50.0;
-            let i = grid.idx(x, y);
-            grid.cells[i] = new;
+            grid.set(x, y, new);
             return;
         }
 
         if y > 0 && grid.get(x, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x, y - 1);
+            grid.cells_swap(x, y, x, y - 1);
             return;
         }
 
         let dir = if self.rand_bool() { 1 } else { -1 };
         if grid.in_bounds(x - dir, y - 1) && grid.get(x - dir, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y - 1);
+            grid.cells_swap(x, y, x - dir, y - 1);
             return;
         }
         if grid.in_bounds(x + dir, y - 1) && grid.get(x + dir, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y - 1);
+            grid.cells_swap(x, y, x + dir, y - 1);
             return;
         }
 
         if self.rand() % 3 == 0 {
             if grid.in_bounds(x - dir, y) && grid.get(x - dir, y).is_empty() {
-                self.do_swap(grid, x, y, x - dir, y);
+                grid.cells_swap(x, y, x - dir, y);
             } else if grid.in_bounds(x + dir, y) && grid.get(x + dir, y).is_empty() {
-                self.do_swap(grid, x, y, x + dir, y);
+                grid.cells_swap(x, y, x + dir, y);
             }
         }
     }
 
-    fn update_fire(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_fire(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
-        if cell.temp < 100.0 || self.rand() % 20 == 0 {
-            let i = grid.idx(x, y);
-            if self.rand() % 3 == 0 {
-                grid.cells[i] = Cell::new(MaterialId::Smoke);
-            } else {
-                grid.cells[i] = Cell::empty();
-            }
-            return;
-        }
-
-        let mut new = cell;
-        new.temp -= 15.0;
-        let i = grid.idx(x, y);
-        grid.cells[i] = new;
-
-        if y > 0 && grid.get(x, y - 1).is_empty() && self.rand() % 2 == 0 {
-            self.do_swap(grid, x, y, x, y - 1);
-        }
 
         for &(dx, dy) in &NEIGHBORS4 {
             let nx = x + dx;
@@ -344,37 +330,52 @@ impl CellularAutomaton {
                 let mut new_n = neighbor;
                 new_n.material = MaterialId::Fire;
                 new_n.temp = 400.0;
-                let i_n = grid.idx(nx, ny);
-                grid.cells[i_n] = new_n;
+                grid.set(nx, ny, new_n);
             }
+        }
+
+        if cell.temp < 100.0 || self.rand() % 20 == 0 {
+            if self.rand() % 3 == 0 {
+                grid.set(x, y, Cell::new(MaterialId::Smoke));
+            } else {
+                grid.set(x, y, Cell::empty());
+            }
+            return;
+        }
+
+        let mut new = cell;
+        new.temp -= 15.0;
+        grid.set(x, y, new);
+
+        if y > 0 && grid.get(x, y - 1).is_empty() && self.rand() % 2 == 0 {
+            grid.cells_swap(x, y, x, y - 1);
         }
     }
 
-    fn update_smoke(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_smoke(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         if self.rand() % 60 == 0 {
-            let i = grid.idx(x, y);
-            grid.cells[i] = Cell::empty();
+            grid.set(x, y, Cell::empty());
             return;
         }
 
         if y > 0 && grid.get(x, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x, y - 1);
+            grid.cells_swap(x, y, x, y - 1);
             return;
         }
 
         let dir = if self.rand_bool() { 1 } else { -1 };
         if grid.in_bounds(x - dir, y - 1) && grid.get(x - dir, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y - 1);
+            grid.cells_swap(x, y, x - dir, y - 1);
         } else if grid.in_bounds(x + dir, y - 1) && grid.get(x + dir, y - 1).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y - 1);
+            grid.cells_swap(x, y, x + dir, y - 1);
         } else if grid.in_bounds(x - dir, y) && grid.get(x - dir, y).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y);
+            grid.cells_swap(x, y, x - dir, y);
         } else if grid.in_bounds(x + dir, y) && grid.get(x + dir, y).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y);
+            grid.cells_swap(x, y, x + dir, y);
         }
     }
 
-    fn update_acid(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_acid(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         for &(dx, dy) in &NEIGHBORS4 {
             let nx = x + dx;
             let ny = y + dy;
@@ -387,11 +388,9 @@ impl CellularAutomaton {
                 && neighbor.material != MaterialId::Stone
                 && self.rand() % 4 == 0
             {
-                let i_n = grid.idx(nx, ny);
-                grid.cells[i_n] = Cell::empty();
+                grid.set(nx, ny, Cell::empty());
                 if self.rand() % 2 == 0 {
-                    let i = grid.idx(x, y);
-                    grid.cells[i] = Cell::empty();
+                    grid.set(x, y, Cell::empty());
                     return;
                 }
             }
@@ -399,113 +398,120 @@ impl CellularAutomaton {
 
         let below = grid.get(x, y + 1);
         if below.is_empty() || (below.is_liquid() && below.density() < 1.2) {
-            self.do_swap(grid, x, y, x, y + 1);
+            grid.cells_swap(x, y, x, y + 1);
             return;
         }
 
         let dir = if self.rand_bool() { 1 } else { -1 };
         if grid.in_bounds(x - dir, y + 1) && grid.get(x - dir, y + 1).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y + 1);
+            grid.cells_swap(x, y, x - dir, y + 1);
         } else if grid.in_bounds(x + dir, y + 1) && grid.get(x + dir, y + 1).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y + 1);
+            grid.cells_swap(x, y, x + dir, y + 1);
         } else if grid.in_bounds(x - dir, y) && grid.get(x - dir, y).is_empty() {
-            self.do_swap(grid, x, y, x - dir, y);
+            grid.cells_swap(x, y, x - dir, y);
         } else if grid.in_bounds(x + dir, y) && grid.get(x + dir, y).is_empty() {
-            self.do_swap(grid, x, y, x + dir, y);
+            grid.cells_swap(x, y, x + dir, y);
         }
     }
 
-    fn update_flesh(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_flesh(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.temp > 200.0 {
             let mut new = cell;
             new.material = MaterialId::Fire;
             new.temp = 400.0;
-            let i = grid.idx(x, y);
-            grid.cells[i] = new;
+            grid.set(x, y, new);
         }
     }
 
-    fn update_grass(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_grass(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.temp > 250.0 {
-            let i = grid.idx(x, y);
-            grid.cells[i] = Cell::new(MaterialId::Fire);
+            grid.set(x, y, Cell::new(MaterialId::Fire));
         }
     }
 
-    fn update_dirt(&mut self, grid: &mut Grid, x: i32, y: i32) {
+    fn update_dirt(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let cell = grid.get(x, y);
         if cell.temp < 0.0 {
             let mut new = cell;
             new.material = MaterialId::Stone;
-            let i = grid.idx(x, y);
-            grid.cells[i] = new;
+            grid.set(x, y, new);
         }
     }
 
-    fn heat_transfer(&mut self, grid: &mut Grid) {
-        let w = grid.width;
-        let size = w * grid.height;
-        self.temps.resize(size, 0.0);
-        for i in 0..size {
-            self.temps[i] = grid.cells[i].temp;
-        }
+    fn heat_transfer(&mut self, grid: &mut ChunkedGrid) {
+        let reg = crate::world::material::MaterialRegistry::instance();
+        let gw = grid.width as i32;
+        let gh = grid.height as i32;
 
-        let chunk_w = grid.chunk_size;
-        for cy in 0..grid.chunks_y {
-            if !grid.chunks[grid.chunk_index(0, cy as i32)].active {
-                let mut any_active = false;
-                for cx in 0..grid.chunks_x {
-                    if grid.is_chunk_active(cx as i32, cy as i32) {
-                        any_active = true;
-                        break;
-                    }
-                }
-                if !any_active {
-                    continue;
+        let active = grid.active_chunks();
+        for (cx, cy) in active {
+            let dirty = grid.get_chunk_dirty(cx, cy);
+            if dirty.is_none() {
+                continue;
+            }
+            let (min_x, min_y, max_x, max_y) = dirty.unwrap();
+
+            let ex_min_x = (min_x - 1).max(0);
+            let ex_min_y = (min_y - 1).max(0);
+            let (ex_max_x, ex_max_y) = if grid.is_infinite() {
+                ((max_x + 1), (max_y + 1))
+            } else {
+                ((max_x + 1).min(gw - 1), (max_y + 1).min(gh - 1))
+            };
+
+            let ew = (ex_max_x - ex_min_x + 1) as usize;
+            let eh = (ex_max_y - ex_min_y + 1) as usize;
+            let ecount = ew.saturating_mul(eh);
+            if ecount > 10000 {
+                eprintln!(
+                    "heat_transfer skipping huge dirty rect: chunk=({}, {}) dirty=({},{},{},{}) ew={} eh={}",
+                    cx, cy, min_x, min_y, max_x, max_y, ew, eh
+                );
+                continue;
+            }
+            if self.temps.len() < ecount {
+                self.temps.resize(ecount, 0.0);
+            }
+
+            for y in ex_min_y..=ex_max_y {
+                for x in ex_min_x..=ex_max_x {
+                    let idx = ((y - ex_min_y) as usize) * ew + (x - ex_min_x) as usize;
+                    self.temps[idx] = grid.get(x, y).temp;
                 }
             }
-            let y0 = cy * chunk_w;
-            let y1 = ((cy + 1) * chunk_w).min(grid.height);
-            for y in y0..y1 {
-                for cx in 0..grid.chunks_x {
-                    if !grid.is_chunk_active(cx as i32, cy as i32) {
+
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let cell = grid.get(x, y);
+                    if cell.is_empty() || cell.is_static() {
                         continue;
                     }
-                    let x0 = cx * chunk_w;
-                    let x1 = ((cx + 1) * chunk_w).min(grid.width);
-                    for x in x0..x1 {
-                        let i = y * w + x;
-                        let cell = grid.cells[i];
-                        if cell.is_empty() || cell.is_static() {
-                            continue;
-                        }
-                        let reg = crate::world::material::MaterialRegistry::instance();
-                        let mat = reg.get(cell.material);
-                        let k = mat.heat_conductivity;
-                        if k == 0.0 {
-                            continue;
-                        }
+                    let mat = reg.get(cell.material);
+                    let k = mat.heat_conductivity;
+                    if k == 0.0 {
+                        continue;
+                    }
 
-                        let mut sum = 0.0;
-                        let mut count = 0;
-                        for &(dx, dy) in &NEIGHBORS4 {
-                            let nx = x as i32 + dx;
-                            let ny = y as i32 + dy;
-                            if nx < 0 || nx >= w as i32 || ny < 0 || ny >= grid.height as i32 {
-                                continue;
-                            }
-                            let ni = ny as usize * w + nx as usize;
-                            sum += self.temps[ni];
-                            count += 1;
+                    let mut sum = 0.0;
+                    let mut count = 0;
+                    for &(dx, dy) in &NEIGHBORS4 {
+                        let nx = x + dx;
+                        let ny = y + dy;
+                        if nx < ex_min_x || nx > ex_max_x || ny < ex_min_y || ny > ex_max_y {
+                            continue;
                         }
-                        if count > 0 {
-                            let avg = sum / count as f32;
-                            let mut new = cell;
-                            new.temp += (avg - cell.temp) * k * 0.1;
-                            grid.cells[i] = new;
-                        }
+                        let ni = ((ny - ex_min_y) as usize) * ew + (nx - ex_min_x) as usize;
+                        sum += self.temps[ni];
+                        count += 1;
+                    }
+                    if count > 0 {
+                        let avg = sum / count as f32;
+                        let mut new = cell;
+                        new.temp += (avg - cell.temp) * k * 0.1;
+                        grid.set(x, y, new);
+                        grid.mark_dirty(x, y);
                     }
                 }
             }
@@ -514,3 +520,11 @@ impl CellularAutomaton {
 }
 
 const NEIGHBORS4: [(i32, i32); 4] = [(0, -1), (0, 1), (-1, 0), (1, 0)];
+
+pub fn random_seed() -> u64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    (nanos ^ (nanos >> 32)) as u64
+}

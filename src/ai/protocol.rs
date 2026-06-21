@@ -289,7 +289,11 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 "entities" => crate::ai::spectrum::Spectrum::Entities,
                 "density" => crate::ai::spectrum::Spectrum::Density,
                 "velocity" => crate::ai::spectrum::Spectrum::Velocity,
-                _ => return Response::err("Unknown spectrum. Use: materials, temperature, light, entities, density, velocity"),
+                _ => {
+                    return Response::err(
+                        "Unknown spectrum. Use: materials, temperature, light, entities, density, velocity",
+                    );
+                }
             };
             let view = s.get_spectrum(&spec, vw, vh);
             Response {

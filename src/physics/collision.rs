@@ -1,6 +1,6 @@
-use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
 use crate::physics::verlet::SubBody;
+use crate::world::cell::MaterialId;
+use crate::world::chunked_grid::ChunkedGrid;
 
 pub struct CollisionResult {
     pub on_ground: bool,
@@ -24,7 +24,7 @@ impl CollisionResult {
     }
 }
 
-pub fn resolve_grid_collision(grid: &Grid, body: &mut SubBody) -> CollisionResult {
+pub fn resolve_grid_collision(grid: &ChunkedGrid, body: &mut SubBody) -> CollisionResult {
     let mut result = CollisionResult::none();
 
     let r = body.radius;

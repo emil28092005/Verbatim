@@ -3,14 +3,14 @@ use crate::entity::EntityManager;
 use crate::render::lighting;
 use crate::ui::UiLayer;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::chunked_grid::ChunkedGrid;
 use image::{ImageBuffer, RgbImage};
 
 pub const CELL_SIZE: u32 = 8;
 pub const UI_CELL_SIZE: u32 = 2;
 
 pub fn capture_frame(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     items: &ItemManager,
     ui: &UiLayer,
@@ -145,7 +145,7 @@ fn entity_positions(
 
 fn shadow_positions(
     entity_positions: &std::collections::HashMap<(i32, i32), [u8; 3]>,
-    grid: &Grid,
+    grid: &ChunkedGrid,
     cam_x: i32,
     cam_y: i32,
     view_w: u32,
@@ -203,7 +203,7 @@ fn draw_cell(img: &mut RgbImage, vx: u32, vy: u32, color: [u8; 3]) {
 
 pub fn save_capture(
     path: &str,
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     items: &ItemManager,
     ui: &UiLayer,
@@ -221,7 +221,7 @@ pub fn save_capture(
 }
 
 pub fn capture_from_state(
-    grid: &Grid,
+    grid: &ChunkedGrid,
     entities: &EntityManager,
     items: &ItemManager,
     ui: &UiLayer,
