@@ -369,11 +369,11 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
 
                             let cols = 4i32;
                             let rows = 2i32;
-                            let slot_w = 8i32;
-                            let slot_h = 6i32;
-                            let gap = 2i32;
+                            let slot_w = 12i32;
+                            let slot_h = 10i32;
+                            let gap = 3i32;
                             let panel_w = cols * slot_w + (cols + 1) * gap + 4;
-                            let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+                            let panel_h = rows * slot_h + (rows + 1) * gap + 28;
                             let px_start = (ui_w - panel_w) / 2;
                             let py_start = (ui_h - panel_h) / 2;
 
@@ -381,7 +381,7 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                                 for col in 0..cols {
                                     let idx = (row * cols + col) as usize;
                                     let sx = px_start + gap + col * (slot_w + gap) + 2;
-                                    let sy = py_start + 10 + row * (slot_h + gap) + gap;
+                                    let sy = py_start + 14 + row * (slot_h + gap) + gap;
                                     if mouse_ui_x >= sx
                                         && mouse_ui_x < sx + slot_w
                                         && mouse_ui_y >= sy
@@ -404,11 +404,11 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
 
                             let cols = 4i32;
                             let rows = 2i32;
-                            let slot_w = 8i32;
-                            let slot_h = 6i32;
-                            let gap = 2i32;
+                            let slot_w = 12i32;
+                            let slot_h = 10i32;
+                            let gap = 3i32;
                             let panel_w = cols * slot_w + (cols + 1) * gap + 4;
-                            let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+                            let panel_h = rows * slot_h + (rows + 1) * gap + 28;
                             let px_start = (ui_w - panel_w) / 2;
                             let py_start = (ui_h - panel_h) / 2;
 
@@ -416,7 +416,7 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                                 for col in 0..cols {
                                     let idx = (row * cols + col) as usize;
                                     let sx = px_start + gap + col * (slot_w + gap) + 2;
-                                    let sy = py_start + 10 + row * (slot_h + gap) + gap;
+                                    let sy = py_start + 14 + row * (slot_h + gap) + gap;
                                     if mouse_ui_x >= sx
                                         && mouse_ui_x < sx + slot_w
                                         && mouse_ui_y >= sy

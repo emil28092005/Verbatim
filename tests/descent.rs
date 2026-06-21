@@ -51,9 +51,11 @@ fn depth_shown_in_hud() {
     let s = setup();
     let player = s.game.entities.all()[0].clone();
     let mut ui = verbatim::ui::UiLayer::new();
+    let screen_w = 320;
+    let screen_h = 100;
     ui.draw_hud(
-        80,
-        25,
+        screen_w,
+        screen_h,
         Some(&player),
         s.game.tick,
         verbatim::world::cell::MaterialId::Sand,
@@ -68,10 +70,11 @@ fn depth_shown_in_hud() {
         player.level, player.xp, 0, 0, s.game.depth, s.game.tick
     );
     let stats_w = verbatim::ui::UiLayer::text_width(&stats);
-    let stats_x = (80 - stats_w).max(0);
-    let line: String = (stats_x..80)
+    let stats_x = (screen_w as i32 - stats_w as i32).max(0);
+    let y_row3 = screen_h as i32 - 28 + 22;
+    let line: String = (stats_x as i32..screen_w as i32)
         .step_by(3)
-        .map(|x| ui.get(x, 24).map(|c| c.ch).unwrap_or(' '))
+        .map(|x| ui.get(x, y_row3).map(|c| c.ch).unwrap_or(' '))
         .collect();
     assert!(line.contains("D:1"), "HUD should show depth: {}", line);
 }

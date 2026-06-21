@@ -334,8 +334,8 @@ impl UiLayer {
         player: Option<&Entity>,
         player_state: &crate::entity::player::Player,
     ) {
-        let w = 44i32;
-        let h = 44i32;
+        let w = 52i32;
+        let h = 62i32;
         let bg = [22u8, 26, 38];
         let border = [160u8, 180, 255];
         let title = [220u8, 230, 255];
@@ -375,11 +375,11 @@ impl UiLayer {
 
         let title_text = "STATUS";
         let tx = start_x + (w - Self::text_width(title_text)) / 2;
-        self.draw_text(tx, start_y + 1, title_text, title, 255);
+        self.draw_text(tx, start_y + 2, title_text, title, 255);
 
         if let Some(p) = player {
             let hp_ratio = (p.health / p.max_health).clamp(0.0, 1.0);
-            let hp_filled = (hp_ratio * 32.0).round() as i32;
+            let hp_filled = (hp_ratio * 38.0).round() as i32;
             let bar_color = if hp_ratio > 0.6 {
                 [80, 240, 80]
             } else if hp_ratio > 0.3 {
@@ -387,56 +387,59 @@ impl UiLayer {
             } else {
                 [255, 60, 60]
             };
-            self.draw_text(start_x + 2, start_y + 7, "HP", fg, 255);
-            for i in 0..32 {
+            self.draw_text(start_x + 3, start_y + 10, "HP", fg, 255);
+            for i in 0..38 {
                 let ch = if i < hp_filled { '#' } else { '-' };
                 let c = if i < hp_filled {
                     bar_color
                 } else {
                     [80, 80, 100]
                 };
-                self.set(start_x + 10 + i, start_y + 7, ch, c, bg);
+                self.set(start_x + 10 + i, start_y + 10, ch, c, bg);
             }
-            let hp_text = format!("{}/{} LV:{}", p.health as i32, p.max_health as i32, p.level);
-            self.draw_text(start_x + 2, start_y + 13, &hp_text, fg, 255);
+            let hp_text = format!(
+                "{}/{}  LV:{}",
+                p.health as i32, p.max_health as i32, p.level
+            );
+            self.draw_text(start_x + 3, start_y + 18, &hp_text, fg, 255);
 
             let xp_ratio = (p.xp as f32 / p.xp_to_level() as f32).clamp(0.0, 1.0);
-            let xp_filled = (xp_ratio * 32.0).round() as i32;
-            self.draw_text(start_x + 2, start_y + 19, "XP", fg, 255);
-            for i in 0..32 {
+            let xp_filled = (xp_ratio * 38.0).round() as i32;
+            self.draw_text(start_x + 3, start_y + 26, "XP", fg, 255);
+            for i in 0..38 {
                 let ch = if i < xp_filled { '#' } else { '-' };
                 let c = if i < xp_filled {
                     [80, 160, 240]
                 } else {
                     [60, 60, 80]
                 };
-                self.set(start_x + 10 + i, start_y + 19, ch, c, bg);
+                self.set(start_x + 10 + i, start_y + 26, ch, c, bg);
             }
 
-            let stats = format!("STR:{} AGI:{}", p.strength, p.agility);
-            self.draw_text(start_x + 2, start_y + 25, &stats, dim, 255);
-            let stats2 = format!("TOU:{} WIL:{}", p.toughness, p.willpower);
-            self.draw_text(start_x + 2, start_y + 31, &stats2, dim, 255);
+            let stats = format!("STR:{}  AGI:{}", p.strength, p.agility);
+            self.draw_text(start_x + 3, start_y + 36, &stats, dim, 255);
+            let stats2 = format!("TOU:{}  WIL:{}", p.toughness, p.willpower);
+            self.draw_text(start_x + 3, start_y + 44, &stats2, dim, 255);
         }
 
-        let inv_title = "INV:";
-        self.draw_text(start_x + 2, start_y + 37, inv_title, fg, 255);
-        let mut ix = start_x + 14;
+        let inv_title = "INVENTORY";
+        self.draw_text(start_x + 3, start_y + 52, inv_title, fg, 255);
+        let mut ix = start_x + 3;
         for item in player_state.inventory.iter().take(8) {
-            if ix + 1 >= start_x + w - 1 {
+            if ix + 2 >= start_x + w - 2 {
                 break;
             }
             let [ch1, ch2] = item.display_glyph();
             let col = item.color();
-            self.set(ix, start_y + 38, ch1, col, bg);
+            self.set(ix, start_y + 58, ch1, col, bg);
             self.set(
                 ix + 1,
-                start_y + 38,
+                start_y + 58,
                 ch2,
                 [col[0] / 2, col[1] / 2, col[2] / 2],
                 bg,
             );
-            ix += 3;
+            ix += 4;
         }
 
         let status = if let Some(p) = player {
@@ -482,11 +485,11 @@ impl UiLayer {
 
         let cols = 4i32;
         let rows = 2i32;
-        let slot_w = 8i32;
-        let slot_h = 6i32;
-        let gap = 2i32;
+        let slot_w = 12i32;
+        let slot_h = 10i32;
+        let gap = 3i32;
         let panel_w = cols * slot_w + (cols + 1) * gap + 4;
-        let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+        let panel_h = rows * slot_h + (rows + 1) * gap + 28;
 
         let px_start = (screen_w as i32 - panel_w) / 2;
         let py_start = (screen_h as i32 - panel_h) / 2;
@@ -538,7 +541,7 @@ impl UiLayer {
             for col in 0..cols {
                 let idx = (row * cols + col) as usize;
                 let sx = px_start + gap + col * (slot_w + gap) + 2;
-                let sy = py_start + 10 + row * (slot_h + gap) + gap;
+                let sy = py_start + 14 + row * (slot_h + gap) + gap;
 
                 for y in 0..slot_h {
                     for x in 0..slot_w {
@@ -569,7 +572,7 @@ impl UiLayer {
                     let [ch1, ch2] = item.display_glyph();
                     let col = item.color();
                     let cx = sx + slot_w / 2 - 1;
-                    let cy = sy + slot_h / 2 - 1;
+                    let cy = sy + slot_h / 2 - 2;
                     self.set(cx, cy, ch1, col, slot_bg);
                     self.set(
                         cx + 1,
@@ -683,11 +686,11 @@ impl UiLayer {
             .map(|i| i.display_string())
             .unwrap_or("  ".to_string());
 
-        let bar_h = 18i32;
+        let bar_h = 28i32;
         let y_top = screen_h as i32 - bar_h;
-        let y_row1 = y_top + 1;
-        let y_row2 = y_top + 7;
-        let y_row3 = y_top + 13;
+        let y_row1 = y_top + 2;
+        let y_row2 = y_top + 12;
+        let y_row3 = y_top + 22;
 
         for row in y_top..screen_h as i32 {
             for x in 0..screen_w {
