@@ -1,12 +1,12 @@
 use rodio::source::Source;
-use rodio::{OutputStream, Sink};
+use rodio::{OutputStream, OutputStreamHandle, Sink};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::time::Instant;
 
 pub struct AudioEngine {
     _stream: Option<OutputStream>,
-    sink: Option<Sink>,
+    handle: Option<OutputStreamHandle>,
     sounds: HashMap<&'static str, &'static [u8]>,
     last_played: HashMap<&'static str, Instant>,
     volume: f32,
@@ -19,13 +19,6 @@ impl AudioEngine {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("Audio init failed: {}", e);
-                return Self::disabled();
-            }
-        };
-        let sink = match Sink::try_new(&handle) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Audio sink init failed: {}", e);
                 return Self::disabled();
             }
         };
@@ -73,7 +66,7 @@ impl AudioEngine {
 
         Self {
             _stream: Some(stream),
-            sink: Some(sink),
+            handle: Some(handle),
             sounds,
             last_played: HashMap::new(),
             volume: 0.5,
@@ -84,7 +77,7 @@ impl AudioEngine {
     fn disabled() -> Self {
         Self {
             _stream: None,
-            sink: None,
+            handle: None,
             sounds: HashMap::new(),
             last_played: HashMap::new(),
             volume: 0.0,
@@ -112,13 +105,18 @@ impl AudioEngine {
             Some(d) => *d,
             None => return,
         };
-        let sink = match &self.sink {
-            Some(s) => s,
+        let handle = match &self.handle {
+            Some(h) => h,
             None => return,
+        };
+        let sink = match Sink::try_new(handle) {
+            Ok(s) => s,
+            Err(_) => return,
         };
         if let Ok(decoder) = rodio::Decoder::new(Cursor::new(data.to_vec())) {
             let source = decoder.amplify(self.volume).convert_samples::<f32>();
             sink.append(source);
+            sink.detach();
         }
     }
 
@@ -128,13 +126,6 @@ impl AudioEngine {
 
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
-        if let Some(sink) = &self.sink {
-            if !self.enabled {
-                sink.pause();
-            } else {
-                sink.play();
-            }
-        }
     }
 
     pub fn is_enabled(&self) -> bool {
