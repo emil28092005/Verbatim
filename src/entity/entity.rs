@@ -103,84 +103,8 @@ impl Entity {
     }
 
     pub fn build_humanoid(&mut self, cx: f32, cy: f32) {
-        self.bodies.clear();
-        self.constraints.clear();
-        self.rest_offsets.clear();
-        self.cx = cx;
-        self.cy = cy;
-        self.cvx = 0.0;
-        self.cvy = 0.0;
-        self.half_w = 2.5;
-        self.half_h = 3.5;
-
-        let r = 0.5;
-        let mat = MaterialId::Flesh;
-
-        let (skin, shirt, pants, boots, hand) = match self.kind {
-            EntityKind::Player => (
-                [220, 200, 240, 255],
-                [140, 80, 200, 255],
-                [90, 50, 150, 255],
-                [60, 35, 100, 255],
-                [210, 185, 235, 255],
-            ),
-            EntityKind::Goblin => (
-                [130, 210, 100, 255],
-                [55, 130, 45, 255],
-                [40, 100, 30, 255],
-                [25, 70, 18, 255],
-                [110, 180, 85, 255],
-            ),
-            EntityKind::Corpse => (
-                [150, 130, 120, 255],
-                [120, 100, 90, 255],
-                [100, 85, 75, 255],
-                [80, 65, 55, 255],
-                [135, 115, 105, 255],
-            ),
-        };
-
-        let layout: [(f32, f32, [u8; 4]); 15] = [
-            (0.0, -3.0, skin),
-            (0.0, -2.0, skin),
-            (0.0, -1.0, shirt),
-            (-1.0, -1.0, hand),
-            (1.0, -1.0, hand),
-            (0.0, 0.0, shirt),
-            (-1.0, 0.0, hand),
-            (1.0, 0.0, hand),
-            (0.0, 1.0, pants),
-            (-1.0, 2.0, pants),
-            (1.0, 2.0, pants),
-            (0.0, 2.0, pants),
-            (-1.0, 3.0, boots),
-            (0.0, 3.0, boots),
-            (1.0, 3.0, boots),
-        ];
-
-        for &(ox, oy, color) in &layout {
-            self.rest_offsets.push((ox, oy));
-            let mut b = SubBody::new(cx + ox, cy + oy, r, mat);
-            b.color = color;
-            self.bodies.push(b);
-        }
-
-        let mk = |a: usize, b: usize, len: f32| Constraint::new(a, b, len, 1.0);
-
-        self.constraints.push(mk(0, 1, 1.0));
-        self.constraints.push(mk(1, 2, 1.0));
-        self.constraints.push(mk(2, 5, 1.0));
-        self.constraints.push(mk(5, 8, 1.0));
-        self.constraints.push(mk(2, 3, 1.0));
-        self.constraints.push(mk(2, 4, 1.0));
-        self.constraints.push(mk(5, 6, 1.0));
-        self.constraints.push(mk(5, 7, 1.0));
-        self.constraints.push(mk(8, 11, 1.0));
-        self.constraints.push(mk(11, 9, 1.0));
-        self.constraints.push(mk(11, 10, 1.0));
-        self.constraints.push(mk(9, 12, 1.0));
-        self.constraints.push(mk(10, 14, 1.0));
-        self.constraints.push(mk(11, 13, 1.0));
+        let template = crate::entity::body_template::template_for_kind(self.kind);
+        template.apply_to(self, cx, cy);
     }
 
     pub fn sync_bodies_to_center(&mut self) {
