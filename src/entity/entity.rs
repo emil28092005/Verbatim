@@ -110,57 +110,52 @@ impl Entity {
         self.cy = cy;
         self.cvx = 0.0;
         self.cvy = 0.0;
-        self.half_w = 3.0;
+        self.half_w = 2.5;
         self.half_h = 3.5;
 
         let r = 0.5;
         let mat = MaterialId::Flesh;
 
-        let (head_c, torso_c, arm_c, leg_c) = match self.kind {
+        let (skin, shirt, pants, boots, hand) = match self.kind {
             EntityKind::Player => (
-                [255, 230, 130, 255],
-                [230, 180, 70, 255],
-                [200, 155, 50, 255],
-                [170, 130, 35, 255],
+                [220, 200, 240, 255],
+                [140, 80, 200, 255],
+                [90, 50, 150, 255],
+                [60, 35, 100, 255],
+                [210, 185, 235, 255],
             ),
             EntityKind::Goblin => (
-                [130, 230, 110, 255],
-                [80, 180, 70, 255],
-                [60, 150, 50, 255],
-                [45, 120, 35, 255],
+                [130, 210, 100, 255],
+                [55, 130, 45, 255],
+                [40, 100, 30, 255],
+                [25, 70, 18, 255],
+                [110, 180, 85, 255],
             ),
             EntityKind::Corpse => (
-                [120, 90, 80, 255],
-                [100, 75, 65, 255],
-                [90, 65, 55, 255],
-                [80, 55, 45, 255],
+                [150, 130, 120, 255],
+                [120, 100, 90, 255],
+                [100, 85, 75, 255],
+                [80, 65, 55, 255],
+                [135, 115, 105, 255],
             ),
         };
 
-        let layout: [(f32, f32, [u8; 4]); 23] = [
-            (-1.0, -3.0, head_c),
-            (0.0, -3.0, head_c),
-            (1.0, -3.0, head_c),
-            (-1.0, -2.0, head_c),
-            (0.0, -2.0, head_c),
-            (1.0, -2.0, head_c),
-            (-2.0, -1.0, arm_c),
-            (-1.0, -1.0, torso_c),
-            (0.0, -1.0, torso_c),
-            (1.0, -1.0, torso_c),
-            (2.0, -1.0, arm_c),
-            (-2.0, 0.0, arm_c),
-            (-1.0, 0.0, torso_c),
-            (0.0, 0.0, torso_c),
-            (1.0, 0.0, torso_c),
-            (2.0, 0.0, arm_c),
-            (-1.0, 1.0, torso_c),
-            (0.0, 1.0, torso_c),
-            (1.0, 1.0, torso_c),
-            (-1.0, 2.0, leg_c),
-            (1.0, 2.0, leg_c),
-            (-1.0, 3.0, leg_c),
-            (1.0, 3.0, leg_c),
+        let layout: [(f32, f32, [u8; 4]); 15] = [
+            (0.0, -3.0, skin),
+            (0.0, -2.0, skin),
+            (0.0, -1.0, shirt),
+            (-1.0, -1.0, hand),
+            (1.0, -1.0, hand),
+            (0.0, 0.0, shirt),
+            (-1.0, 0.0, hand),
+            (1.0, 0.0, hand),
+            (0.0, 1.0, pants),
+            (-1.0, 2.0, pants),
+            (1.0, 2.0, pants),
+            (0.0, 2.0, pants),
+            (-1.0, 3.0, boots),
+            (0.0, 3.0, boots),
+            (1.0, 3.0, boots),
         ];
 
         for &(ox, oy, color) in &layout {
@@ -174,41 +169,18 @@ impl Entity {
 
         self.constraints.push(mk(0, 1, 1.0));
         self.constraints.push(mk(1, 2, 1.0));
-        self.constraints.push(mk(3, 4, 1.0));
-        self.constraints.push(mk(4, 5, 1.0));
-        self.constraints.push(mk(0, 3, 1.0));
-        self.constraints.push(mk(1, 4, 1.0));
         self.constraints.push(mk(2, 5, 1.0));
-
-        self.constraints.push(mk(3, 7, 1.0));
-        self.constraints.push(mk(4, 8, 1.0));
-        self.constraints.push(mk(5, 9, 1.0));
-
-        self.constraints.push(mk(7, 8, 1.0));
-        self.constraints.push(mk(8, 9, 1.0));
-        self.constraints.push(mk(12, 13, 1.0));
-        self.constraints.push(mk(13, 14, 1.0));
-        self.constraints.push(mk(16, 17, 1.0));
-        self.constraints.push(mk(17, 18, 1.0));
-
-        self.constraints.push(mk(7, 12, 1.0));
-        self.constraints.push(mk(8, 13, 1.0));
-        self.constraints.push(mk(9, 14, 1.0));
-        self.constraints.push(mk(12, 16, 1.0));
-        self.constraints.push(mk(13, 17, 1.0));
-        self.constraints.push(mk(14, 18, 1.0));
-
-        self.constraints.push(mk(6, 7, 1.0));
-        self.constraints.push(mk(10, 9, 1.0));
-        self.constraints.push(mk(11, 12, 1.0));
-        self.constraints.push(mk(15, 14, 1.0));
-        self.constraints.push(mk(6, 11, 1.0));
-        self.constraints.push(mk(10, 15, 1.0));
-
-        self.constraints.push(mk(16, 19, 1.0));
-        self.constraints.push(mk(18, 20, 1.0));
-        self.constraints.push(mk(19, 21, 1.0));
-        self.constraints.push(mk(20, 22, 1.0));
+        self.constraints.push(mk(5, 8, 1.0));
+        self.constraints.push(mk(2, 3, 1.0));
+        self.constraints.push(mk(2, 4, 1.0));
+        self.constraints.push(mk(5, 6, 1.0));
+        self.constraints.push(mk(5, 7, 1.0));
+        self.constraints.push(mk(8, 11, 1.0));
+        self.constraints.push(mk(11, 9, 1.0));
+        self.constraints.push(mk(11, 10, 1.0));
+        self.constraints.push(mk(9, 12, 1.0));
+        self.constraints.push(mk(10, 14, 1.0));
+        self.constraints.push(mk(11, 13, 1.0));
     }
 
     pub fn sync_bodies_to_center(&mut self) {

@@ -118,8 +118,8 @@ fn player_bodies_count_matches_layout() {
     s.init();
     let p = s.get_player().unwrap();
     assert_eq!(
-        p.body_count, 23,
-        "player should have 23 bodies (humanoid shape)"
+        p.body_count, 15,
+        "player should have 15 bodies (profile humanoid)"
     );
 }
 
