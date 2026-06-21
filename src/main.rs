@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use verbatim::ai;
 use verbatim::game::Game;
+use verbatim::render::lighting;
 use verbatim::render::terminal::TerminalRenderer;
 use verbatim::render::window_input::WindowInput;
 use verbatim::world::cell::MaterialId;
@@ -31,6 +32,15 @@ struct Cli {
 
     #[arg(long)]
     replay_file: Option<String>,
+
+    #[arg(long, default_value_t = 600)]
+    benchmark_ticks: u32,
+
+    #[arg(long, default_value = "graphics")]
+    benchmark_renderer: String,
+
+    #[arg(long, default_value = "benchmark_results.json")]
+    benchmark_output: String,
 }
 
 trait GpuRenderer {
@@ -41,8 +51,11 @@ trait GpuRenderer {
         &mut self,
         grid: &verbatim::world::grid::Grid,
         entities: &verbatim::entity::EntityManager,
+        items: &verbatim::entity::item::ItemManager,
+        ui: &verbatim::ui::UiLayer,
         cam_x: i32,
         cam_y: i32,
+        lighting: Option<&lighting::LightGrid>,
     );
     fn grid_w(&self) -> usize;
     fn grid_h(&self) -> usize;
@@ -56,10 +69,15 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
         &mut self,
         grid: &verbatim::world::grid::Grid,
         entities: &verbatim::entity::EntityManager,
+        items: &verbatim::entity::item::ItemManager,
+        ui: &verbatim::ui::UiLayer,
         cam_x: i32,
         cam_y: i32,
+        lighting: Option<&lighting::LightGrid>,
     ) {
-        verbatim::render::vulkan::VulkanRenderer::render(self, grid, entities, cam_x, cam_y)
+        verbatim::render::vulkan::VulkanRenderer::render(
+            self, grid, entities, items, ui, cam_x, cam_y, lighting,
+        )
     }
     fn grid_w(&self) -> usize {
         verbatim::render::vulkan::VulkanRenderer::grid_w(self)
@@ -77,10 +95,15 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
         &mut self,
         grid: &verbatim::world::grid::Grid,
         entities: &verbatim::entity::EntityManager,
+        items: &verbatim::entity::item::ItemManager,
+        ui: &verbatim::ui::UiLayer,
         cam_x: i32,
         cam_y: i32,
+        lighting: Option<&lighting::LightGrid>,
     ) {
-        verbatim::render::graphics::GraphicsRenderer::render(self, grid, entities, cam_x, cam_y)
+        verbatim::render::graphics::GraphicsRenderer::render(
+            self, grid, entities, items, ui, cam_x, cam_y, lighting,
+        )
     }
     fn grid_w(&self) -> usize {
         verbatim::render::graphics::GraphicsRenderer::grid_w(self)
@@ -133,9 +156,20 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "capture" => {
+            if cli.headless_ticks > 0 {
+                run_capture(cli.headless_ticks);
+            } else {
+                eprintln!("Use --headless-ticks N with --mode capture");
+                std::process::exit(1);
+            }
+        }
+        "benchmark" => {
+            run_benchmark_mode(&cli);
+        }
         _ => {
             eprintln!(
-                "Unknown mode: {}. Use terminal, ascii, graphics, pipe, test, replay, or headless.",
+                "Unknown mode: {}. Use terminal, ascii, graphics, pipe, test, replay, headless, or capture.",
                 cli.mode
             );
             std::process::exit(1);
@@ -149,7 +183,7 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
         .create_window(
             Window::default_attributes()
                 .with_title(title)
-                .with_inner_size(winit::dpi::LogicalSize::new(160 * 10, 50 * 10)),
+                .with_inner_size(winit::dpi::LogicalSize::new(1600, 900)),
         )
         .expect("Failed to create window");
     let window = Arc::new(window);
@@ -175,6 +209,10 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
     let mut last_time = Instant::now();
     let mut accumulator = Duration::ZERO;
     let mut running = true;
+    let target_frame_time = Duration::from_nanos(1_000_000_000 / 60);
+    let mut frame_count = 0u32;
+    let mut frame_time_acc = Duration::ZERO;
+    let mut last_fps_print = Instant::now();
 
     event_loop
         .run(|event, ctrl| {
@@ -235,6 +273,28 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                         game.player.stop_horizontal(&mut game.entities);
                     }
 
+                    if input.shoot_left {
+                        game.player_shoot(-1.0, 0.0);
+                    } else if input.shoot_right {
+                        game.player_shoot(1.0, 0.0);
+                    } else if input.shoot_up {
+                        game.player_shoot(0.0, -1.0);
+                    } else if input.shoot_down {
+                        game.player_shoot(0.0, 1.0);
+                    }
+                    if input.toggle_fireball {
+                        game.fireball_mode = !game.fireball_mode;
+                    }
+                    if input.descend {
+                        game.descend();
+                    }
+                    if input.use_item {
+                        game.use_item(0);
+                    }
+                    if input.drop_item {
+                        game.drop_item(0);
+                    }
+
                     if input.cam_left {
                         game.cam_x -= 3;
                     }
@@ -287,12 +347,239 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     game.cam_x = px as i32 - (vw as i32 / 2);
                     game.cam_y = py as i32 - (vh as i32 / 2);
 
-                    renderer.render(&game.grid, &game.entities, game.cam_x, game.cam_y);
+                    game.build_ui(vw, vh);
+
+                    renderer.render(
+                        &game.grid,
+                        &game.entities,
+                        &game.items,
+                        &game.ui,
+                        game.cam_x,
+                        game.cam_y,
+                        None,
+                    );
+
+                    let elapsed = Instant::now().duration_since(last_time);
+                    if elapsed < target_frame_time {
+                        std::thread::sleep(target_frame_time - elapsed);
+                    }
+
+                    let frame_time = Instant::now().duration_since(last_time);
+                    frame_time_acc += frame_time;
+                    frame_count += 1;
+                    if last_fps_print.elapsed() >= Duration::from_secs(1) {
+                        let avg_ms = frame_time_acc.as_secs_f32() * 1000.0 / frame_count as f32;
+                        game.fps = 1000.0 / avg_ms;
+                        frame_count = 0;
+                        frame_time_acc = Duration::ZERO;
+                        last_fps_print = Instant::now();
+                    }
                 }
                 _ => {}
             }
         })
         .expect("event loop error");
+}
+
+fn run_benchmark_mode(cli: &Cli) {
+    let ticks = cli.benchmark_ticks;
+    let renderer_type = cli.benchmark_renderer.as_str();
+    let output_path = cli.benchmark_output.as_str();
+
+    eprintln!("Benchmark: {} ticks, renderer={}", ticks, renderer_type);
+
+    match renderer_type {
+        "ascii" => run_benchmark_inner::<verbatim::render::vulkan::VulkanRenderer>(
+            ticks,
+            output_path,
+            "ascii",
+        ),
+        "graphics" => run_benchmark_inner::<verbatim::render::graphics::GraphicsRenderer>(
+            ticks,
+            output_path,
+            "graphics",
+        ),
+        _ => {
+            eprintln!(
+                "Unknown benchmark renderer: {}. Use ascii or graphics.",
+                renderer_type
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_benchmark_inner<R: GpuRenderer>(ticks: u32, output_path: &str, mode_name: &str) {
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let window = event_loop
+        .create_window(
+            Window::default_attributes()
+                .with_title("Verbatim — Benchmark")
+                .with_inner_size(winit::dpi::LogicalSize::new(1600, 900)),
+        )
+        .expect("Failed to create window");
+    let window = Arc::new(window);
+
+    let mut renderer = match R::new(Arc::clone(&window)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Vulkan init failed: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let mut game = Game::new();
+    game.init_world();
+
+    let mut tick_count = 0u32;
+    let mut ca_times_us: Vec<u64> = Vec::with_capacity(ticks as usize);
+    let mut render_times_us: Vec<u64> = Vec::with_capacity(ticks as usize);
+    let mut frame_times_us: Vec<u64> = Vec::with_capacity(ticks as usize);
+    let benchmark_start = Instant::now();
+
+    event_loop
+        .run(|event, ctrl| {
+            ctrl.set_control_flow(ControlFlow::Poll);
+
+            match event {
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    ctrl.exit();
+                }
+                Event::AboutToWait => {
+                    if tick_count >= ticks {
+                        let total_elapsed = benchmark_start.elapsed();
+
+                        let ca_avg_us = ca_times_us.iter().sum::<u64>() / ca_times_us.len() as u64;
+                        let render_avg_us =
+                            render_times_us.iter().sum::<u64>() / render_times_us.len() as u64;
+                        let frame_avg_us =
+                            frame_times_us.iter().sum::<u64>() / frame_times_us.len() as u64;
+
+                        let ca_p99_us = percentile(&ca_times_us, 99);
+                        let render_p99_us = percentile(&render_times_us, 99);
+                        let frame_p99_us = percentile(&frame_times_us, 99);
+
+                        let ca_min_us = *ca_times_us.iter().min().unwrap_or(&0);
+                        let render_min_us = *render_times_us.iter().min().unwrap_or(&0);
+                        let frame_min_us = *frame_times_us.iter().min().unwrap_or(&0);
+
+                        let total_ms = total_elapsed.as_secs_f64() * 1000.0;
+                        let avg_fps = ticks as f64 / (total_ms / 1000.0);
+                        let avg_frame_ms = frame_avg_us as f64 / 1000.0;
+                        let p99_frame_ms = frame_p99_us as f64 / 1000.0;
+                        let min_frame_ms = frame_min_us as f64 / 1000.0;
+
+                        let json = format!(
+                            r#"{{
+  "mode": "{}",
+  "ticks": {},
+  "total_time_ms": {:.1},
+  "avg_fps": {:.1},
+  "avg_frame_time_ms": {:.2},
+  "p99_frame_time_ms": {:.2},
+  "min_frame_time_ms": {:.2},
+  "subsystems": {{
+    "ca_step_avg_us": {},
+    "ca_step_p99_us": {},
+    "ca_step_min_us": {},
+    "render_avg_us": {},
+    "render_p99_us": {},
+    "render_min_us": {}
+  }}
+}}"#,
+                            mode_name,
+                            ticks,
+                            total_ms,
+                            avg_fps,
+                            avg_frame_ms,
+                            p99_frame_ms,
+                            min_frame_ms,
+                            ca_avg_us,
+                            ca_p99_us,
+                            ca_min_us,
+                            render_avg_us,
+                            render_p99_us,
+                            render_min_us,
+                        );
+
+                        let mut f = std::fs::File::create(output_path)
+                            .expect("Cannot create benchmark output");
+                        f.write_all(json.as_bytes())
+                            .expect("Cannot write benchmark output");
+
+                        eprintln!("=== Benchmark Results ===");
+                        eprintln!("Mode:       {}", mode_name);
+                        eprintln!("Ticks:      {}", ticks);
+                        eprintln!("Total time: {:.1} ms", total_ms);
+                        eprintln!("Avg FPS:    {:.1}", avg_fps);
+                        eprintln!("Avg frame:  {:.2} ms", avg_frame_ms);
+                        eprintln!("P99 frame:  {:.2} ms", p99_frame_ms);
+                        eprintln!("Min frame:  {:.2} ms", min_frame_ms);
+                        eprintln!(
+                            "CA step:    avg={}us p99={}us min={}us",
+                            ca_avg_us, ca_p99_us, ca_min_us
+                        );
+                        eprintln!(
+                            "Render:     avg={}us p99={}us min={}us",
+                            render_avg_us, render_p99_us, render_min_us
+                        );
+                        eprintln!("Results written to {}", output_path);
+
+                        ctrl.exit();
+                        return;
+                    }
+
+                    let vw = renderer.grid_w();
+                    let vh = renderer.grid_h();
+
+                    let frame_start = Instant::now();
+
+                    let ca_start = Instant::now();
+                    game.fixed_update();
+                    let ca_elapsed = ca_start.elapsed();
+
+                    let (px, py) = game.player.center(&game.entities);
+                    game.cam_x = px as i32 - (vw as i32 / 2);
+                    game.cam_y = py as i32 - (vh as i32 / 2);
+                    game.build_ui(vw, vh);
+
+                    let render_start = Instant::now();
+                    renderer.render(
+                        &game.grid,
+                        &game.entities,
+                        &game.items,
+                        &game.ui,
+                        game.cam_x,
+                        game.cam_y,
+                        None,
+                    );
+                    let render_elapsed = render_start.elapsed();
+
+                    let frame_elapsed = frame_start.elapsed();
+
+                    ca_times_us.push(ca_elapsed.as_micros() as u64);
+                    render_times_us.push(render_elapsed.as_micros() as u64);
+                    frame_times_us.push(frame_elapsed.as_micros() as u64);
+
+                    tick_count += 1;
+                }
+                _ => {}
+            }
+        })
+        .expect("event loop error");
+}
+
+fn percentile(sorted_data: &[u64], p: u64) -> u64 {
+    if sorted_data.is_empty() {
+        return 0;
+    }
+    let mut data: Vec<u64> = sorted_data.to_vec();
+    data.sort_unstable();
+    let idx = (data.len() * p as usize) / 100;
+    data[idx.min(data.len() - 1)]
 }
 
 fn run_test_mode(cli: &Cli) {
@@ -421,6 +708,55 @@ fn run_headless(ticks: u32) {
         "Headless run complete: {} ticks, dump written to headless_dump.txt",
         ticks
     );
+}
+
+fn run_capture(ticks: u32) {
+    let mut game = Game::new();
+    game.init_world();
+
+    for _ in 0..ticks {
+        game.fixed_update();
+    }
+
+    let (px, py) = game.player.center(&game.entities);
+    let view_w = (1600 / verbatim::render::capture::CELL_SIZE).min(256);
+    let view_h = (900 / verbatim::render::capture::CELL_SIZE).min(256);
+    let cam_x = px as i32 - (view_w as i32 / 2);
+    let cam_y = py as i32 - (view_h as i32 / 2);
+
+    game.build_ui(view_w as usize, view_h as usize);
+
+    let light = lighting::compute_lighting(
+        &game.grid,
+        cam_x,
+        cam_y,
+        view_w as usize,
+        view_h as usize,
+        lighting::ambient_light(),
+    );
+
+    let path = "capture.png";
+    match verbatim::render::capture::save_capture(
+        path,
+        &game.grid,
+        &game.entities,
+        &game.items,
+        &game.ui,
+        cam_x,
+        cam_y,
+        view_w,
+        view_h,
+        Some(&light),
+    ) {
+        Ok(_) => eprintln!(
+            "Capture complete: {} ticks, image written to {}",
+            ticks, path
+        ),
+        Err(e) => {
+            eprintln!("Capture failed: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn dump_view(

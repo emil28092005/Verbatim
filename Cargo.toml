@@ -14,6 +14,7 @@ ash = "0.38"
 ash-window = "0.13"
 raw-window-handle = "0.6"
 bytemuck = { version = "1", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [profile.release]
 opt-level = 3

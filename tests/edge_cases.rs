@@ -109,7 +109,10 @@ fn player_at_spawn_is_alive() {
     s.init();
     let p = s.get_player().unwrap();
     assert!(p.alive, "player should be alive at spawn");
-    assert_eq!(p.health, 100.0, "player should have full health at spawn");
+    assert_eq!(
+        p.health, p.max_health,
+        "player should have full health at spawn"
+    );
 }
 
 #[test]
@@ -134,7 +137,7 @@ fn goblin_has_correct_max_health() {
     });
     let entities = s.get_entities();
     let g = entities.into_iter().find(|e| e.kind == "Goblin").unwrap();
-    assert_eq!(g.max_health, 40.0, "goblin max health should be 40");
+    assert_eq!(g.max_health, 80.0, "goblin max health should be 80");
 }
 
 #[test]
@@ -142,7 +145,7 @@ fn player_has_correct_max_health() {
     let mut s = GameSession::new_seeded(42);
     s.init();
     let p = s.get_player().unwrap();
-    assert_eq!(p.max_health, 100.0, "player max health should be 100");
+    assert_eq!(p.max_health, 150.0, "player max health should be 150");
 }
 
 #[test]

@@ -18,11 +18,10 @@ pub struct Material {
     pub display_char: char,
 }
 
-impl Material {
-}
+impl Material {}
 
 pub struct MaterialRegistry {
-    materials: [Material; 14],
+    materials: [Material; 15],
 }
 
 impl MaterialRegistry {
@@ -252,6 +251,22 @@ impl MaterialRegistry {
                     color_fg: (100, 70, 50),
                     color_bg: (40, 30, 20),
                     display_char: ':',
+                },
+                Material {
+                    id: MaterialId::Stairs,
+                    name: "stairs",
+                    density: 0.0,
+                    solid: true,
+                    liquid: false,
+                    gas: false,
+                    static_: true,
+                    flammable: false,
+                    ignition_temp: f32::INFINITY,
+                    melt_temp: f32::INFINITY,
+                    heat_conductivity: 0.0,
+                    color_fg: (255, 220, 80),
+                    color_bg: (60, 50, 20),
+                    display_char: '>',
                 },
             ],
         }

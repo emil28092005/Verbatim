@@ -17,6 +17,7 @@ pub enum MaterialId {
     Smoke = 11,
     Grass = 12,
     Dirt = 13,
+    Stairs = 14,
 }
 
 impl MaterialId {
@@ -36,6 +37,7 @@ impl MaterialId {
             MaterialId::Smoke => '*',
             MaterialId::Grass => '"',
             MaterialId::Dirt => ':',
+            MaterialId::Stairs => '>',
         }
     }
 }
@@ -113,6 +115,65 @@ impl Cell {
 
     pub fn display_char(self) -> char {
         self.material.display_char()
+    }
+
+    pub fn to_bytes(&self) -> [u8; 12] {
+        let mut out = [0u8; 12];
+        out[0] = self.material as u8;
+        out[1..5].copy_from_slice(&self.temp.to_le_bytes());
+        out[5] = self.variant;
+        out[6..9].copy_from_slice(&self.fg);
+        out[9..12].copy_from_slice(&self.bg);
+        out
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let material = if bytes.is_empty() {
+            MaterialId::Empty
+        } else {
+            match bytes[0] {
+                0 => MaterialId::Empty,
+                1 => MaterialId::Sand,
+                2 => MaterialId::Water,
+                3 => MaterialId::Stone,
+                4 => MaterialId::Lava,
+                5 => MaterialId::Wood,
+                6 => MaterialId::Flesh,
+                7 => MaterialId::Bone,
+                8 => MaterialId::Steam,
+                9 => MaterialId::Fire,
+                10 => MaterialId::Acid,
+                11 => MaterialId::Smoke,
+                12 => MaterialId::Grass,
+                13 => MaterialId::Dirt,
+                14 => MaterialId::Stairs,
+                _ => MaterialId::Stone,
+            }
+        };
+        let temp = if bytes.len() >= 5 {
+            f32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]])
+        } else {
+            20.0
+        };
+        let variant = bytes.get(5).copied().unwrap_or(0);
+        let fg = if bytes.len() >= 9 {
+            [bytes[6], bytes[7], bytes[8]]
+        } else {
+            [15, 15, 20]
+        };
+        let bg = if bytes.len() >= 12 {
+            [bytes[9], bytes[10], bytes[11]]
+        } else {
+            [10, 10, 15]
+        };
+        Self {
+            material,
+            temp,
+            updated_this_tick: false,
+            variant,
+            fg,
+            bg,
+        }
     }
 }
 

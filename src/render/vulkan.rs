@@ -4,16 +4,42 @@ use std::ffi::CString;
 use std::sync::Arc;
 
 use crate::entity::{EntityKind, EntityManager};
+use crate::render::lighting;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
+use crate::world::grid::{Grid, WORLD_H, WORLD_W};
 
-const CHAR_W: u32 = 10;
-const CHAR_H: u32 = 10;
+const CHAR_W: u32 = 8;
+const CHAR_H: u32 = 8;
+const UI_CELL_SIZE: u32 = 2;
 const ATLAS_COLS: usize = 16;
-const ATLAS_ROWS: usize = 16;
+const ATLAS_ROWS: usize = 8;
 const ATLAS_W: u32 = (ATLAS_COLS as u32) * CHAR_W;
 const ATLAS_H: u32 = (ATLAS_ROWS as u32) * CHAR_H;
 const MAX_FRAMES: usize = 2;
+
+fn entity_priority(kind: EntityKind) -> u32 {
+    match kind {
+        EntityKind::Player => 3,
+        EntityKind::Goblin => 2,
+        EntityKind::Slime => 1,
+        EntityKind::Corpse => 0,
+    }
+}
+
+fn background_color(wx: i32, wy: i32, vy: i32, view_h: i32) -> [u8; 4] {
+    let t = (vy as f32 / view_h as f32).clamp(0.0, 1.0);
+    let base_r = (10.0 + t * 15.0) as u8;
+    let base_g = (10.0 + t * 25.0) as u8;
+    let base_b = (25.0 + t * 35.0) as u8;
+
+    let hash = ((wx.wrapping_mul(73856093)) ^ (wy.wrapping_mul(19349663))).abs();
+    if hash % 80 == 0 {
+        let brightness = (60 + (hash % 120) as u8).min(255);
+        return [brightness, brightness, brightness + 20, 255];
+    }
+
+    [base_r, base_g, base_b, 255]
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -29,10 +55,27 @@ struct CellInstance {
 }
 
 #[repr(C)]
+#[derive(bytemuck::NoUninit, Clone, Copy, Default)]
+struct GpuLightSource {
+    pos: [f32; 2],
+    radius: f32,
+    _pad0: f32,
+    color: [f32; 3],
+    _pad1: f32,
+}
+
+const MAX_LIGHT_SOURCES: usize = 64;
+
+#[repr(C)]
 #[derive(bytemuck::NoUninit, Clone, Copy)]
 struct PushConstants {
     screen_size: [f32; 2],
     cell_size: [f32; 2],
+    world_size: [i32; 2],
+    cam_pos: [i32; 2],
+    ambient: [f32; 3],
+    is_ui: u32,
+    light_count: u32,
 }
 
 pub struct VulkanRenderer {
@@ -50,6 +93,7 @@ pub struct VulkanRenderer {
     swapchain: vk::SwapchainKHR,
     swapchain_image_views: Vec<vk::ImageView>,
     swapchain_extent: vk::Extent2D,
+    present_mode: vk::PresentModeKHR,
 
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
@@ -73,12 +117,32 @@ pub struct VulkanRenderer {
     atlas_memory: vk::DeviceMemory,
     atlas_view: vk::ImageView,
     atlas_sampler: vk::Sampler,
-    atlas_map: std::collections::HashMap<char, (f32, f32, f32, f32)>,
+    atlas_map: [(f32, f32, f32, f32); 128],
 
     instance_buffer: vk::Buffer,
     instance_memory: vk::DeviceMemory,
     instance_ptr: *mut CellInstance,
     instance_count: usize,
+
+    ui_instance_buffer: vk::Buffer,
+    ui_instance_memory: vk::DeviceMemory,
+    ui_instance_ptr: *mut CellInstance,
+    ui_instance_capacity: usize,
+
+    grid_buffer: vk::Buffer,
+    grid_memory: vk::DeviceMemory,
+    grid_ptr: *mut u32,
+
+    light_buffer: vk::Buffer,
+    light_memory: vk::DeviceMemory,
+    light_ptr: *mut GpuLightSource,
+
+    ent_pri_buf: Vec<u8>,
+    entity_char_buf: Vec<char>,
+    entity_color_buf: Vec<[u8; 4]>,
+    item_char_buf: Vec<char>,
+    item_color_buf: Vec<[u8; 4]>,
+    shadow_buf: Vec<bool>,
 
     descriptor_pool: vk::DescriptorPool,
     descriptor_set: vk::DescriptorSet,
@@ -112,16 +176,17 @@ impl VulkanRenderer {
         let (device, graphics_queue) = create_device(&instance, physical_device, queue_family)?;
 
         let swapchain_loader = ash::khr::swapchain::Device::new(&instance, &device);
-        let (swapchain, swapchain_images, swapchain_format, swapchain_extent) = create_swapchain(
-            &device,
-            &swapchain_loader,
-            &surface_loader,
-            physical_device,
-            surface,
-            queue_family,
-            pixel_w,
-            pixel_h,
-        )?;
+        let (swapchain, swapchain_images, swapchain_format, swapchain_extent, present_mode) =
+            create_swapchain(
+                &device,
+                &swapchain_loader,
+                &surface_loader,
+                physical_device,
+                surface,
+                queue_family,
+                pixel_w,
+                pixel_h,
+            )?;
 
         let swapchain_image_views: Vec<_> = swapchain_images
             .iter()
@@ -156,7 +221,56 @@ impl VulkanRenderer {
         let (instance_buffer, instance_memory, instance_ptr) =
             create_instance_buffer(&device, &instance, physical_device, instance_count)?;
 
-        update_descriptor_set(&device, descriptor_set, atlas_view, atlas_sampler);
+        let ui_instance_capacity = 65536usize;
+        let (ui_instance_buffer, ui_instance_memory, ui_instance_ptr) =
+            create_instance_buffer(&device, &instance, physical_device, ui_instance_capacity)?;
+
+        let grid_data = vec![0u32; WORLD_W * WORLD_H];
+        let (grid_buffer, grid_memory) = create_buffer_with_data(
+            &device,
+            &instance,
+            physical_device,
+            &grid_data,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        let grid_ptr = unsafe {
+            let sz = (WORLD_W * WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize;
+            let ptr = device
+                .map_memory(grid_memory, 0, sz, vk::MemoryMapFlags::default())
+                .map_err(|e| format!("map grid: {e:?}"))?;
+            ptr as *mut u32
+        };
+
+        let light_data = vec![GpuLightSource::default(); MAX_LIGHT_SOURCES];
+        let light_buffer_size =
+            (MAX_LIGHT_SOURCES * std::mem::size_of::<GpuLightSource>()) as vk::DeviceSize;
+        let (light_buffer, light_memory) = create_buffer_with_data(
+            &device,
+            &instance,
+            physical_device,
+            &light_data,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        let light_ptr = unsafe {
+            let ptr = device
+                .map_memory(
+                    light_memory,
+                    0,
+                    light_buffer_size,
+                    vk::MemoryMapFlags::default(),
+                )
+                .map_err(|e| format!("map light: {e:?}"))?;
+            ptr as *mut GpuLightSource
+        };
+
+        update_descriptor_set(
+            &device,
+            descriptor_set,
+            atlas_view,
+            atlas_sampler,
+            grid_buffer,
+            light_buffer,
+        );
 
         Ok(Self {
             grid_w,
@@ -171,6 +285,7 @@ impl VulkanRenderer {
             swapchain,
             swapchain_image_views,
             swapchain_extent,
+            present_mode,
             render_pass,
             pipeline,
             pipeline_layout,
@@ -194,6 +309,27 @@ impl VulkanRenderer {
             instance_memory,
             instance_ptr,
             instance_count,
+
+            ui_instance_buffer,
+            ui_instance_memory,
+            ui_instance_ptr,
+            ui_instance_capacity,
+
+            grid_buffer,
+            grid_memory,
+            grid_ptr,
+
+            light_buffer,
+            light_memory,
+            light_ptr,
+
+            ent_pri_buf: Vec::new(),
+            entity_char_buf: Vec::new(),
+            entity_color_buf: Vec::new(),
+            item_char_buf: Vec::new(),
+            item_color_buf: Vec::new(),
+            shadow_buf: Vec::new(),
+
             descriptor_pool,
             descriptor_set,
             descriptor_set_layout,
@@ -201,11 +337,49 @@ impl VulkanRenderer {
         })
     }
 
-    pub fn render(&mut self, grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32) {
+    pub fn render(
+        &mut self,
+        grid: &Grid,
+        entities: &EntityManager,
+        items: &crate::entity::item::ItemManager,
+        ui: &crate::ui::UiLayer,
+        cam_x: i32,
+        cam_y: i32,
+        _lighting: Option<&lighting::LightGrid>,
+    ) {
         self.check_resize();
 
-        let mut entity_map: std::collections::HashMap<(i32, i32), (char, [u8; 4])> =
-            std::collections::HashMap::new();
+        let vp_size = self.grid_w * self.grid_h;
+        if self.ent_pri_buf.len() != vp_size {
+            self.ent_pri_buf.resize(vp_size, 0);
+            self.entity_char_buf.resize(vp_size, '\0');
+            self.entity_color_buf.resize(vp_size, [0, 0, 0, 0]);
+            self.item_char_buf.resize(vp_size, '\0');
+            self.item_color_buf.resize(vp_size, [0, 0, 0, 0]);
+            self.shadow_buf.resize(vp_size, false);
+        }
+        self.ent_pri_buf.fill(0);
+        self.entity_char_buf.fill('\0');
+        self.entity_color_buf.fill([0, 0, 0, 0]);
+        self.item_char_buf.fill('\0');
+        self.item_color_buf.fill([0, 0, 0, 0]);
+        self.shadow_buf.fill(false);
+
+        let ent_pri = &mut self.ent_pri_buf;
+        let entity_char = &mut self.entity_char_buf;
+        let entity_color = &mut self.entity_color_buf;
+        let item_char = &mut self.item_char_buf;
+        let item_color = &mut self.item_color_buf;
+
+        for item in items.all() {
+            let sx = item.x - cam_x;
+            let sy = item.y - cam_y;
+            if sx >= 0 && sx < self.grid_w as i32 && sy >= 0 && sy < self.grid_h as i32 {
+                let idx = sy as usize * self.grid_w + sx as usize;
+                item_char[idx] = item.display_char();
+                item_color[idx] = [item.color()[0], item.color()[1], item.color()[2], 255];
+            }
+        }
         for e in entities.all() {
             for b in &e.bodies {
                 if !b.alive {
@@ -214,6 +388,7 @@ impl VulkanRenderer {
                 let sx = b.x as i32 - cam_x;
                 let sy = b.y as i32 - cam_y;
                 if sx >= 0 && sx < self.grid_w as i32 && sy >= 0 && sy < self.grid_h as i32 {
+                    let idx = sy as usize * self.grid_w + sx as usize;
                     let ch = match e.kind {
                         EntityKind::Player if e.alive => '@',
                         EntityKind::Goblin if e.alive => 'g',
@@ -225,30 +400,105 @@ impl VulkanRenderer {
                     } else {
                         b.color
                     };
-                    entity_map.insert((sx, sy), (ch, fg));
+                    let pri = entity_priority(e.kind);
+                    if pri as u8 > ent_pri[idx] {
+                        ent_pri[idx] = pri as u8;
+                        entity_char[idx] = ch;
+                        entity_color[idx] = fg;
+                    }
                 }
+            }
+        }
+
+        let shadow_buf = &mut self.shadow_buf;
+        for idx in 0..vp_size {
+            if ent_pri[idx] == 0 {
+                continue;
+            }
+            let ex = idx % self.grid_w;
+            let ey = idx / self.grid_w;
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let sx = ex as i32 + dx;
+                    let sy = ey as i32 + dy;
+                    if sx < 0 || sx >= self.grid_w as i32 || sy < 0 || sy >= self.grid_h as i32 {
+                        continue;
+                    }
+                    let sidx = sy as usize * self.grid_w + sx as usize;
+                    if ent_pri[sidx] > 0 {
+                        continue;
+                    }
+                    let wx = cam_x + sx;
+                    let wy = cam_y + sy;
+                    if !grid.in_bounds(wx, wy) || grid.get(wx, wy).is_empty() {
+                        shadow_buf[sidx] = true;
+                    }
+                }
+            }
+        }
+
+        unsafe {
+            let margin = 30i32;
+            let x_min = (cam_x - margin).max(0) as usize;
+            let x_max = (cam_x + self.grid_w as i32 + margin).min(WORLD_W as i32) as usize;
+            let y_min = (cam_y - margin).max(0) as usize;
+            let y_max = (cam_y + self.grid_h as i32 + margin).min(WORLD_H as i32) as usize;
+            for y in y_min..y_max {
+                let row_offset = y * WORLD_W;
+                for x in x_min..x_max {
+                    let i = row_offset + x;
+                    *self.grid_ptr.add(i) = grid.cells[i].material as u32;
+                }
+            }
+        }
+
+        let sources =
+            lighting::gather_sources_in_range(grid, cam_x, cam_y, self.grid_w, self.grid_h, 30);
+        let light_count = sources.len().min(MAX_LIGHT_SOURCES) as u32;
+        unsafe {
+            let light_slice = std::slice::from_raw_parts_mut(self.light_ptr, MAX_LIGHT_SOURCES);
+            for (i, src) in sources.iter().take(MAX_LIGHT_SOURCES).enumerate() {
+                light_slice[i] = GpuLightSource {
+                    pos: [src.x as f32, src.y as f32],
+                    radius: src.radius as f32,
+                    _pad0: 0.0,
+                    color: [
+                        src.color[0] as f32 / 255.0,
+                        src.color[1] as f32 / 255.0,
+                        src.color[2] as f32 / 255.0,
+                    ],
+                    _pad1: 0.0,
+                };
             }
         }
 
         let instances =
             unsafe { std::slice::from_raw_parts_mut(self.instance_ptr, self.instance_count) };
-        let bg_default = [10u8, 10, 15, 255];
 
+        let gh = self.grid_h as i32;
         for dy in 0..self.grid_h {
             for dx in 0..self.grid_w {
                 let idx = dy * self.grid_w + dx;
                 let wx = cam_x + dx as i32;
                 let wy = cam_y + dy as i32;
 
-                let (ch, fg, bg) = if let Some(&(ec, ef)) = entity_map.get(&(dx as i32, dy as i32))
-                {
-                    (ec, ef, bg_default)
+                let bg = background_color(wx, wy, dy as i32, gh);
+
+                let (ch, fg, bg) = if ent_pri[idx] > 0 {
+                    (entity_char[idx], entity_color[idx], bg)
+                } else if item_char[idx] != '\0' {
+                    (item_char[idx], item_color[idx], bg)
+                } else if shadow_buf[idx] {
+                    (' ', [0, 0, 0, 255], bg)
                 } else if !grid.in_bounds(wx, wy) {
-                    ('?', [80, 80, 80, 255], bg_default)
+                    ('?', [80, 80, 80, 255], bg)
                 } else {
                     let cell = grid.get(wx, wy);
                     if cell.is_empty() {
-                        (' ', [10, 10, 15, 255], bg_default)
+                        (' ', bg, bg)
                     } else {
                         let fg = if cell.material == MaterialId::Lava {
                             let r = 200u8.saturating_add(cell.variant / 2);
@@ -261,11 +511,7 @@ impl VulkanRenderer {
                     }
                 };
 
-                let (au, av, aw, ah) = self
-                    .atlas_map
-                    .get(&ch)
-                    .copied()
-                    .unwrap_or((0.0, 0.0, 0.0, 0.0));
+                let (au, av, aw, ah) = self.atlas_map[(ch as usize) & 127];
                 instances[idx] = CellInstance {
                     grid_x: dx as f32,
                     grid_y: dy as f32,
@@ -277,6 +523,29 @@ impl VulkanRenderer {
                     bg,
                 };
             }
+        }
+
+        let ui_instances = unsafe {
+            std::slice::from_raw_parts_mut(self.ui_instance_ptr, self.ui_instance_capacity)
+        };
+        let mut ui_count = 0usize;
+        for (x, y) in ui.keys() {
+            if ui_count >= self.ui_instance_capacity {
+                break;
+            }
+            let cell = ui.get(*x, *y).unwrap();
+            let (au, av, aw, ah) = self.atlas_map[(cell.ch as usize) & 127];
+            ui_instances[ui_count] = CellInstance {
+                grid_x: *x as f32,
+                grid_y: *y as f32,
+                atlas_u: au,
+                atlas_v: av,
+                atlas_w: aw,
+                atlas_h: ah,
+                fg: [cell.fg[0], cell.fg[1], cell.fg[2], cell.alpha],
+                bg: [cell.bg[0], cell.bg[1], cell.bg[2], cell.alpha],
+            };
+            ui_count += 1;
         }
 
         let frame = self.frame_index;
@@ -351,12 +620,22 @@ impl VulkanRenderer {
                 &[],
             );
 
+            let ambient = lighting::ambient_light();
             let pc = PushConstants {
                 screen_size: [
                     self.swapchain_extent.width as f32,
                     self.swapchain_extent.height as f32,
                 ],
                 cell_size: [CHAR_W as f32, CHAR_H as f32],
+                world_size: [WORLD_W as i32, WORLD_H as i32],
+                cam_pos: [cam_x, cam_y],
+                ambient: [
+                    ambient[0] as f32 / 255.0,
+                    ambient[1] as f32 / 255.0,
+                    ambient[2] as f32 / 255.0,
+                ],
+                is_ui: 0,
+                light_count,
             };
             device.cmd_push_constants(
                 cmd,
@@ -367,6 +646,36 @@ impl VulkanRenderer {
             );
 
             device.cmd_draw_indexed(cmd, 6, self.instance_count as u32, 0, 0, 0);
+
+            if ui_count > 0 {
+                device.cmd_bind_vertex_buffers(
+                    cmd,
+                    0,
+                    &[self.vertex_buffer, self.ui_instance_buffer],
+                    &[0, 0],
+                );
+                let ui_pc = PushConstants {
+                    screen_size: [
+                        self.swapchain_extent.width as f32,
+                        self.swapchain_extent.height as f32,
+                    ],
+                    cell_size: [UI_CELL_SIZE as f32, UI_CELL_SIZE as f32],
+                    world_size: [WORLD_W as i32, WORLD_H as i32],
+                    cam_pos: [0, 0],
+                    ambient: [0.0, 0.0, 0.0],
+                    is_ui: 1,
+                    light_count: 0,
+                };
+                device.cmd_push_constants(
+                    cmd,
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&ui_pc),
+                );
+                device.cmd_draw_indexed(cmd, 6, ui_count as u32, 0, 0, 0);
+            }
+
             device.cmd_end_render_pass(cmd);
             let _ = device.end_command_buffer(cmd);
 
@@ -458,7 +767,7 @@ impl VulkanRenderer {
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(caps.current_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(vk::PresentModeKHR::FIFO)
+            .present_mode(self.present_mode)
             .clipped(true)
             .old_swapchain(self.swapchain);
 
@@ -630,6 +939,12 @@ impl Drop for VulkanRenderer {
             self.device.free_memory(self.atlas_memory, None);
             self.device.destroy_buffer(self.instance_buffer, None);
             self.device.free_memory(self.instance_memory, None);
+            self.device.destroy_buffer(self.ui_instance_buffer, None);
+            self.device.free_memory(self.ui_instance_memory, None);
+            self.device.destroy_buffer(self.grid_buffer, None);
+            self.device.free_memory(self.grid_memory, None);
+            self.device.destroy_buffer(self.light_buffer, None);
+            self.device.free_memory(self.light_memory, None);
             self.device.destroy_buffer(self.vertex_buffer, None);
             self.device.free_memory(self.vertex_memory, None);
             self.device.destroy_buffer(self.index_buffer, None);
@@ -761,9 +1076,26 @@ fn create_swapchain(
     qf: u32,
     pw: u32,
     ph: u32,
-) -> Result<(vk::SwapchainKHR, Vec<vk::Image>, vk::Format, vk::Extent2D), String> {
+) -> Result<
+    (
+        vk::SwapchainKHR,
+        Vec<vk::Image>,
+        vk::Format,
+        vk::Extent2D,
+        vk::PresentModeKHR,
+    ),
+    String,
+> {
     let caps = unsafe { surface_loader.get_physical_device_surface_capabilities(pd, surface) }
         .map_err(|e| format!("caps: {e:?}"))?;
+    let present_modes =
+        unsafe { surface_loader.get_physical_device_surface_present_modes(pd, surface) }
+            .unwrap_or_default();
+    let present_mode = present_modes
+        .iter()
+        .copied()
+        .find(|&m| m == vk::PresentModeKHR::MAILBOX)
+        .unwrap_or(vk::PresentModeKHR::FIFO);
     let format = vk::SurfaceFormatKHR {
         format: vk::Format::B8G8R8A8_UNORM,
         color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
@@ -790,13 +1122,13 @@ fn create_swapchain(
         .queue_family_indices(&qf_slice)
         .pre_transform(caps.current_transform)
         .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-        .present_mode(vk::PresentModeKHR::FIFO)
+        .present_mode(present_mode)
         .clipped(true);
     let swapchain =
         unsafe { sl.create_swapchain(&ci, None) }.map_err(|e| format!("swapchain: {e:?}"))?;
     let images =
         unsafe { sl.get_swapchain_images(swapchain) }.map_err(|e| format!("images: {e:?}"))?;
-    Ok((swapchain, images, format.format, extent))
+    Ok((swapchain, images, format.format, extent, present_mode))
 }
 
 fn create_image_view(device: &ash::Device, image: vk::Image, format: vk::Format) -> vk::ImageView {
@@ -855,20 +1187,38 @@ fn create_descriptor(
     ),
     String,
 > {
-    let binding = vk::DescriptorSetLayoutBinding::default()
-        .binding(0)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(1)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-    let li = vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding));
+    let bindings = [
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(2)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX),
+    ];
+    let li = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
     let layout = unsafe { device.create_descriptor_set_layout(&li, None) }
         .map_err(|e| format!("ds_layout: {e:?}"))?;
-    let ps = vk::DescriptorPoolSize {
-        ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        descriptor_count: 1,
-    };
+    let pool_sizes = [
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::STORAGE_BUFFER,
+            descriptor_count: 2,
+        },
+    ];
     let pi = vk::DescriptorPoolCreateInfo::default()
-        .pool_sizes(std::slice::from_ref(&ps))
+        .pool_sizes(&pool_sizes)
         .max_sets(1);
     let pool = unsafe { device.create_descriptor_pool(&pi, None) }
         .map_err(|e| format!("ds_pool: {e:?}"))?;
@@ -980,6 +1330,13 @@ fn create_pipeline(
     let ms = vk::PipelineMultisampleStateCreateInfo::default()
         .rasterization_samples(vk::SampleCountFlags::TYPE_1);
     let cba = vk::PipelineColorBlendAttachmentState::default()
+        .blend_enable(true)
+        .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+        .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+        .color_blend_op(vk::BlendOp::ADD)
+        .src_alpha_blend_factor(vk::BlendFactor::ONE)
+        .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+        .alpha_blend_op(vk::BlendOp::ADD)
         .color_write_mask(vk::ColorComponentFlags::RGBA);
     let cb =
         vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&cba));
@@ -1176,7 +1533,7 @@ fn create_atlas_texture(
         vk::DeviceMemory,
         vk::ImageView,
         vk::Sampler,
-        std::collections::HashMap<char, (f32, f32, f32, f32)>,
+        [(f32, f32, f32, f32); 128],
     ),
     String,
 > {
@@ -1191,19 +1548,16 @@ fn create_atlas_texture(
     )
     .expect("font");
     let mut atlas_data = vec![0u8; (ATLAS_W * ATLAS_H) as usize];
-    let mut atlas_map = std::collections::HashMap::new();
+    let mut atlas_map = [(0.0f32, 0.0f32, 0.0f32, 0.0f32); 128];
     let chars: Vec<char> = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~?".chars().collect();
     for (i, &ch) in chars.iter().enumerate() {
         let col = i % ATLAS_COLS;
         let row = i / ATLAS_COLS;
-        atlas_map.insert(
-            ch,
-            (
-                (col as f32 * CHAR_W as f32) / ATLAS_W as f32,
-                (row as f32 * CHAR_H as f32) / ATLAS_H as f32,
-                CHAR_W as f32 / ATLAS_W as f32,
-                CHAR_H as f32 / ATLAS_H as f32,
-            ),
+        atlas_map[(ch as usize) & 127] = (
+            (col as f32 * CHAR_W as f32) / ATLAS_W as f32,
+            (row as f32 * CHAR_H as f32) / ATLAS_H as f32,
+            CHAR_W as f32 / ATLAS_W as f32,
+            CHAR_H as f32 / ATLAS_H as f32,
         );
         let (metrics, bitmap) = font.rasterize(ch, CHAR_H as f32);
         for y in 0..metrics.height.min(CHAR_H as usize) {
@@ -1460,17 +1814,39 @@ fn update_descriptor_set(
     set: vk::DescriptorSet,
     view: vk::ImageView,
     sampler: vk::Sampler,
+    grid_buffer: vk::Buffer,
+    light_buffer: vk::Buffer,
 ) {
     let ii = vk::DescriptorImageInfo::default()
         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image_view(view)
         .sampler(sampler);
-    let w = vk::WriteDescriptorSet::default()
-        .dst_set(set)
-        .dst_binding(0)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .image_info(std::slice::from_ref(&ii));
+    let bi = vk::DescriptorBufferInfo::default()
+        .buffer(grid_buffer)
+        .offset(0)
+        .range((WORLD_W * WORLD_H * std::mem::size_of::<u32>()) as vk::DeviceSize);
+    let li = vk::DescriptorBufferInfo::default()
+        .buffer(light_buffer)
+        .offset(0)
+        .range((MAX_LIGHT_SOURCES * std::mem::size_of::<GpuLightSource>()) as vk::DeviceSize);
+    let writes = [
+        vk::WriteDescriptorSet::default()
+            .dst_set(set)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(std::slice::from_ref(&ii)),
+        vk::WriteDescriptorSet::default()
+            .dst_set(set)
+            .dst_binding(1)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(std::slice::from_ref(&bi)),
+        vk::WriteDescriptorSet::default()
+            .dst_set(set)
+            .dst_binding(2)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(std::slice::from_ref(&li)),
+    ];
     unsafe {
-        device.update_descriptor_sets(std::slice::from_ref(&w), &[]);
+        device.update_descriptor_sets(&writes, &[]);
     }
 }

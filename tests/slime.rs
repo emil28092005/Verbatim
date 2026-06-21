@@ -28,7 +28,7 @@ fn slime_spawns_correctly() {
     assert!(slime.is_some(), "slime should exist after spawn");
     let sl = slime.unwrap();
     assert!(sl.alive, "slime should be alive");
-    assert_eq!(sl.max_health, 25.0, "slime max health should be 25");
+    assert_eq!(sl.max_health, 65.0, "slime max health should be 65");
 }
 
 #[test]
@@ -46,11 +46,11 @@ fn slime_takes_damage_and_dies() {
         .find(|e| e.kind == "Slime")
         .unwrap()
         .id;
-    s.perform_action(&AiAction::DamageEntity { id, amount: 25.0 });
+    s.perform_action(&AiAction::DamageEntity { id, amount: 65.0 });
     s.step(1);
     let entities = s.get_entities();
     let sl = entities.into_iter().find(|e| e.id == id).unwrap();
-    assert!(!sl.alive, "slime should die after 25 damage");
+    assert!(!sl.alive, "slime should die after 65 damage");
     assert_eq!(sl.kind, "Corpse", "dead slime should become corpse");
 }
 

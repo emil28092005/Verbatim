@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
 use crate::ai::state::material_from_name;
 use crate::ai::state::parse_entity_kind;
 use crate::game::Game;
+use crate::physics::projectile::ProjectileType;
 use crate::world::cell::Cell;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -55,6 +56,14 @@ pub enum AiAction {
         y: i32,
     },
     CenterCamera,
+    Shoot {
+        dir_x: f32,
+        dir_y: f32,
+    },
+    ToggleFireball,
+    Descend,
+    UseItem,
+    DropItem,
 }
 
 impl AiAction {
@@ -74,6 +83,11 @@ impl AiAction {
             AiAction::SetGravity { .. } => "set_gravity",
             AiAction::SetCamera { .. } => "set_camera",
             AiAction::CenterCamera => "center_camera",
+            AiAction::Shoot { .. } => "shoot",
+            AiAction::ToggleFireball => "toggle_fireball",
+            AiAction::Descend => "descend",
+            AiAction::UseItem => "use_item",
+            AiAction::DropItem => "drop_item",
         }
     }
 
@@ -90,7 +104,12 @@ impl AiAction {
                 game.player.jump(&mut game.entities, on_ground);
             }
             AiAction::Wait => {}
-            AiAction::Paint { x, y, material, radius } => {
+            AiAction::Paint {
+                x,
+                y,
+                material,
+                radius,
+            } => {
                 if let Some(mat) = material_from_name(material) {
                     for dy in -*radius..=*radius {
                         for dx in -*radius..=*radius {
@@ -106,7 +125,13 @@ impl AiAction {
                     game.grid.set_material(*x, *y, mat);
                 }
             }
-            AiAction::FillRect { x, y, w, h, material } => {
+            AiAction::FillRect {
+                x,
+                y,
+                w,
+                h,
+                material,
+            } => {
                 if let Some(mat) = material_from_name(material) {
                     for dy in 0..*h {
                         for dx in 0..*w {
@@ -151,6 +176,30 @@ impl AiAction {
                 let (px, py) = game.player.center(&game.entities);
                 game.center_camera_on(px, py);
             }
+            AiAction::Shoot { dir_x, dir_y } => {
+                game.player_shoot(*dir_x, *dir_y);
+            }
+            AiAction::ToggleFireball => {
+                game.fireball_mode = !game.fireball_mode;
+            }
+            AiAction::Descend => {
+                game.descend();
+            }
+            AiAction::UseItem => {
+                game.use_item(0);
+            }
+            AiAction::DropItem => {
+                game.drop_item(0);
+            }
         }
+    }
+}
+
+pub fn projectile_type_from_name(name: &str) -> Option<ProjectileType> {
+    match name.to_lowercase().as_str() {
+        "arrow" => Some(ProjectileType::Arrow),
+        "fireball" | "fire" => Some(ProjectileType::Fireball),
+        "magic" | "bolt" | "magic_bolt" => Some(ProjectileType::MagicBolt),
+        _ => None,
     }
 }

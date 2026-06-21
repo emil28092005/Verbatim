@@ -1,5 +1,4 @@
 use crate::physics::verlet::{Constraint, SubBody};
-use crate::world::cell::MaterialId;
 
 pub type EntityId = u32;
 
@@ -29,6 +28,56 @@ pub struct Entity {
     pub max_health: f32,
     pub on_fire: bool,
     pub fire_timer: u32,
+    pub poisoned: bool,
+    pub poison_timer: u32,
+    pub frozen: bool,
+    pub frozen_timer: u32,
+    pub bleeding: bool,
+    pub bleeding_timer: u32,
+    pub level: u32,
+    pub xp: u32,
+    pub strength: u32,
+    pub agility: u32,
+    pub toughness: u32,
+    pub willpower: u32,
+    pub counted_for_score: bool,
+}
+
+impl Clone for Entity {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            kind: self.kind,
+            bodies: self.bodies.clone(),
+            constraints: self.constraints.clone(),
+            rest_offsets: self.rest_offsets.clone(),
+            alive: self.alive,
+            rigid: self.rigid,
+            cx: self.cx,
+            cy: self.cy,
+            cvx: self.cvx,
+            cvy: self.cvy,
+            half_w: self.half_w,
+            half_h: self.half_h,
+            health: self.health,
+            max_health: self.max_health,
+            on_fire: self.on_fire,
+            fire_timer: self.fire_timer,
+            poisoned: self.poisoned,
+            poison_timer: self.poison_timer,
+            frozen: self.frozen,
+            frozen_timer: self.frozen_timer,
+            bleeding: self.bleeding,
+            bleeding_timer: self.bleeding_timer,
+            level: self.level,
+            xp: self.xp,
+            strength: self.strength,
+            agility: self.agility,
+            toughness: self.toughness,
+            willpower: self.willpower,
+            counted_for_score: self.counted_for_score,
+        }
+    }
 }
 
 impl Entity {
@@ -49,6 +98,19 @@ impl Entity {
             max_health: 100.0,
             on_fire: false,
             fire_timer: 0,
+            poisoned: false,
+            poison_timer: 0,
+            frozen: false,
+            frozen_timer: 0,
+            bleeding: false,
+            bleeding_timer: 0,
+            level: 1,
+            xp: 0,
+            strength: 10,
+            agility: 10,
+            toughness: 10,
+            willpower: 10,
+            counted_for_score: false,
             half_w: 3.5,
             half_h: 3.0,
         }
@@ -106,6 +168,15 @@ impl Entity {
         }
     }
 
+    pub fn name(&self) -> &'static str {
+        match self.kind {
+            EntityKind::Player => "Player",
+            EntityKind::Goblin => "Goblin",
+            EntityKind::Slime => "Slime",
+            EntityKind::Corpse => "Corpse",
+        }
+    }
+
     pub fn build_humanoid(&mut self, cx: f32, cy: f32) {
         let template = crate::entity::body_template::template_for_kind(self.kind);
         template.apply_to(self, cx, cy);
@@ -152,6 +223,64 @@ impl Entity {
             self.fire_timer = 0;
         }
     }
+
+    pub fn recalc_max_health(&mut self) {
+        let base = match self.kind {
+            EntityKind::Player => 80.0,
+            EntityKind::Goblin => 30.0,
+            EntityKind::Slime => 15.0,
+            EntityKind::Corpse => 0.0,
+        };
+        self.max_health = base + self.toughness as f32 * 5.0 + self.level as f32 * 10.0;
+        self.health = self.health.min(self.max_health);
+    }
+
+    pub fn xp_to_level(&self) -> u32 {
+        self.level * 100
+    }
+
+    pub fn add_xp(&mut self, amount: u32) {
+        if !self.alive {
+            return;
+        }
+        self.xp += amount;
+        while self.xp >= self.xp_to_level() {
+            self.xp -= self.xp_to_level();
+            self.level += 1;
+            self.recalc_max_health();
+            self.health = self.max_health;
+        }
+    }
+
+    pub fn apply_status_effects(&mut self) {
+        if self.poisoned {
+            self.poison_timer += 1;
+            self.take_damage(0.2);
+            if self.poison_timer > 180 {
+                self.poisoned = false;
+                self.poison_timer = 0;
+            }
+        }
+        if self.bleeding {
+            self.bleeding_timer += 1;
+            self.take_damage(0.3);
+            if self.bleeding_timer > 120 {
+                self.bleeding = false;
+                self.bleeding_timer = 0;
+            }
+        }
+        if self.frozen {
+            self.frozen_timer += 1;
+            if self.frozen_timer > 90 {
+                self.frozen = false;
+                self.frozen_timer = 0;
+            }
+        }
+    }
+
+    pub fn status_effects_active(&self) -> bool {
+        self.on_fire || self.poisoned || self.frozen || self.bleeding
+    }
 }
 
 pub struct EntityManager {
@@ -173,16 +302,28 @@ impl EntityManager {
         let mut e = Entity::new(id, kind);
         match kind {
             EntityKind::Player => {
-                e.max_health = 100.0;
-                e.health = 100.0;
+                e.strength = 12;
+                e.agility = 12;
+                e.toughness = 12;
+                e.willpower = 12;
+                e.recalc_max_health();
+                e.health = e.max_health;
             }
             EntityKind::Goblin => {
-                e.max_health = 40.0;
-                e.health = 40.0;
+                e.strength = 8;
+                e.agility = 10;
+                e.toughness = 8;
+                e.willpower = 6;
+                e.recalc_max_health();
+                e.health = e.max_health;
             }
             EntityKind::Slime => {
-                e.max_health = 25.0;
-                e.health = 25.0;
+                e.strength = 6;
+                e.agility = 6;
+                e.toughness = 8;
+                e.willpower = 4;
+                e.recalc_max_health();
+                e.health = e.max_health;
             }
             EntityKind::Corpse => {
                 e.alive = false;

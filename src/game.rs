@@ -1,11 +1,14 @@
 use std::time::{Duration, Instant};
 
 use crate::entity::player::Player;
-use crate::entity::{EntityKind, EntityManager};
+use crate::entity::{EntityKind, EntityManager, ItemManager, ItemType};
 use crate::input::{Action, InputHandler};
 use crate::physics::collision::resolve_grid_collision;
+use crate::physics::projectile::{ProjectileManager, ProjectileType};
 use crate::physics::verlet::VerletSolver;
+use crate::render::lighting;
 use crate::render::Renderer;
+use crate::ui::UiLayer;
 use crate::world::cell::MaterialId;
 use crate::world::cellular::CellularAutomaton;
 use crate::world::grid::Grid;
@@ -15,8 +18,11 @@ pub struct Game {
     pub ca: CellularAutomaton,
     pub verlet: VerletSolver,
     pub entities: EntityManager,
+    pub projectiles: ProjectileManager,
+    pub items: ItemManager,
     pub player: Player,
     pub input: InputHandler,
+    pub ui: UiLayer,
     pub cam_x: i32,
     pub cam_y: i32,
     pub running: bool,
@@ -24,6 +30,14 @@ pub struct Game {
     pub fixed_dt: Duration,
     pub accumulator: Duration,
     pub last_time: Instant,
+    pub last_shot_tick: u64,
+    pub shot_cooldown: u64,
+    pub fireball_mode: bool,
+    pub corpse_decomp_timer: u64,
+    pub kills: u32,
+    pub score: u32,
+    pub depth: u32,
+    pub fps: f32,
 }
 
 impl Game {
@@ -35,8 +49,11 @@ impl Game {
             ca: CellularAutomaton::new(),
             verlet: VerletSolver::new(),
             entities,
+            projectiles: ProjectileManager::new(),
+            items: ItemManager::new(),
             player,
             input: InputHandler::new(),
+            ui: UiLayer::new(),
             cam_x: 100,
             cam_y: 100,
             running: true,
@@ -44,6 +61,14 @@ impl Game {
             fixed_dt: Duration::from_millis(16),
             accumulator: Duration::ZERO,
             last_time: Instant::now(),
+            last_shot_tick: 0,
+            shot_cooldown: 8,
+            fireball_mode: false,
+            corpse_decomp_timer: 0,
+            kills: 0,
+            score: 0,
+            depth: 1,
+            fps: 0.0,
         }
     }
 
@@ -155,11 +180,22 @@ impl Game {
                 break;
             }
         }
+        let stair_y = (h as i32 - 2).max(surface_y + 2);
+        self.grid
+            .set_material(surface_x, stair_y, MaterialId::Stairs);
+
         let cy = (surface_y as f32) - 5.0;
         self.player.spawn_at(&mut self.entities, cx, cy);
 
         let (px, py) = self.player.center(&self.entities);
         self.center_camera_on(px, py);
+
+        self.items
+            .spawn(ItemType::Sword, px as i32 - 6, py as i32 + 1);
+        self.items
+            .spawn(ItemType::HealthPotion, px as i32 + 6, py as i32 + 1);
+        self.items
+            .spawn(ItemType::LeatherArmor, px as i32 - 3, py as i32 - 8);
     }
 
     pub fn center_camera_on(&mut self, px: f32, py: f32) {
@@ -176,12 +212,24 @@ impl Game {
         self.input.start();
 
         self.last_time = Instant::now();
+        let mut frame_count = 0u32;
+        let mut frame_time_acc = Duration::ZERO;
+        let mut last_fps_print = Instant::now();
 
         while self.running {
             let now = Instant::now();
             let frame_time = now.duration_since(self.last_time);
             self.last_time = now;
             self.accumulator += frame_time;
+            frame_time_acc += frame_time;
+            frame_count += 1;
+            if last_fps_print.elapsed() >= Duration::from_secs(1) {
+                let avg_ms = frame_time_acc.as_secs_f32() * 1000.0 / frame_count as f32;
+                self.fps = 1000.0 / avg_ms;
+                frame_count = 0;
+                frame_time_acc = Duration::ZERO;
+                last_fps_print = Instant::now();
+            }
 
             while self.accumulator >= self.fixed_dt {
                 self.fixed_update();
@@ -194,7 +242,26 @@ impl Game {
             self.cam_x = px as i32 - (vw as i32 / 2);
             self.cam_y = py as i32 - (vh as i32 / 2);
 
-            if let Err(e) = renderer.render(&self.grid, &self.entities, self.cam_x, self.cam_y) {
+            self.build_ui(vw, vh);
+
+            let light = lighting::compute_lighting(
+                &self.grid,
+                self.cam_x,
+                self.cam_y,
+                vw,
+                vh,
+                lighting::ambient_light(),
+            );
+
+            if let Err(e) = renderer.render(
+                &self.grid,
+                &self.entities,
+                &self.items,
+                &self.ui,
+                self.cam_x,
+                self.cam_y,
+                Some(&light),
+            ) {
                 eprintln!("Render error: {}", e);
                 break;
             }
@@ -218,6 +285,14 @@ impl Game {
                     self.running = false;
                     return;
                 }
+                Action::ShootLeft => self.player_shoot(-1.0, 0.0),
+                Action::ShootRight => self.player_shoot(1.0, 0.0),
+                Action::ShootUp => self.player_shoot(0.0, -1.0),
+                Action::ShootDown => self.player_shoot(0.0, 1.0),
+                Action::ToggleFireball => self.fireball_mode = !self.fireball_mode,
+                Action::Descend => self.descend(),
+                Action::UseItem => self.use_item(0),
+                Action::DropItem => self.drop_item(0),
                 Action::Paint(brush) => {
                     let mat = brush.to_material();
                     let cx = self.cam_x + (vw as i32 / 2);
@@ -266,13 +341,92 @@ impl Game {
             self.player.stop_horizontal(&mut self.entities);
         }
 
-        for action in &held {
+        let mut held = held;
+        for action in &mut held {
             match action {
                 Action::MoveCameraLeft => self.cam_x -= 2,
                 Action::MoveCameraRight => self.cam_x += 2,
                 Action::MoveCameraUp => self.cam_y -= 2,
                 Action::MoveCameraDown => self.cam_y += 2,
+                Action::ShootLeft => self.player_shoot(-1.0, 0.0),
+                Action::ShootRight => self.player_shoot(1.0, 0.0),
+                Action::ShootUp => self.player_shoot(0.0, -1.0),
+                Action::ShootDown => self.player_shoot(0.0, 1.0),
                 _ => {}
+            }
+        }
+    }
+
+    pub fn build_ui(&mut self, vw: usize, vh: usize) {
+        self.ui.clear();
+        self.ui.tick_messages();
+
+        let player = self.player.entity(&self.entities).cloned();
+        let brush = self
+            .input
+            .paint_brush
+            .to_material()
+            .unwrap_or(crate::world::cell::MaterialId::Empty);
+        let player_alive = player.as_ref().map(|e| e.alive).unwrap_or(false);
+        let ui_w = (vw as i32) * crate::ui::UI_SCALE;
+        let ui_h = (vh as i32) * crate::ui::UI_SCALE;
+        self.ui
+            .draw_character_panel(1, 1, player.as_ref(), &self.player);
+        self.ui.draw_hud(
+            ui_w as usize,
+            ui_h as usize,
+            player.as_ref(),
+            self.tick,
+            brush,
+            self.kills,
+            self.score,
+            self.depth,
+            &self.player,
+            self.fps,
+        );
+        let msg_x = (ui_w / 2) - 24;
+        self.ui.draw_messages(msg_x, 4);
+        self.ui.draw_damage_numbers(self.cam_x, self.cam_y);
+        self.ui.draw_edge_indicators(
+            ui_w as usize,
+            ui_h as usize,
+            self.entities.all(),
+            self.cam_x,
+            self.cam_y,
+        );
+        self.ui
+            .draw_entity_labels(self.entities.all(), self.cam_x, self.cam_y);
+        self.ui
+            .draw_status_icons(self.entities.all(), self.cam_x, self.cam_y);
+        self.ui.draw_minimap(
+            ui_w as usize,
+            ui_h as usize,
+            &self.grid,
+            self.entities.all(),
+            self.cam_x,
+            self.cam_y,
+        );
+        if !player_alive {
+            self.ui
+                .draw_death_screen(ui_w as usize, ui_h as usize, self.kills, self.score);
+        }
+
+        for e in self.entities.all() {
+            if !e.alive || e.kind == EntityKind::Corpse {
+                continue;
+            }
+            let (sx, sy) = crate::ui::entity_screen_pos_ui(e, self.cam_x, self.cam_y);
+            let top = sy - (e.half_h as i32 * crate::ui::UI_SCALE) - 2;
+            self.ui
+                .draw_health_bar(sx - 6, top, e.health, e.max_health, 12);
+        }
+
+        for p in self.projectiles.all() {
+            let sx = (p.x as i32 - self.cam_x) * crate::ui::UI_SCALE;
+            let sy = (p.y as i32 - self.cam_y) * crate::ui::UI_SCALE;
+            if sx >= 0 && sx < ui_w && sy >= 0 && sy < ui_h {
+                self.ui
+                    .set(sx, sy, p.draw_char(), p.draw_color(), [0, 0, 0]);
             }
         }
     }
@@ -299,19 +453,275 @@ impl Game {
     pub fn fixed_update(&mut self) {
         self.tick += 1;
 
+        self.update_active_chunks();
         self.ca.step(&mut self.grid);
 
         self.update_entities();
         self.update_slime_ai();
+        self.update_goblin_ai();
         self.update_combat();
-
+        self.update_projectiles();
         self.apply_world_damage();
+        self.decompose_corpses();
+        self.update_status_effects();
+        self.update_score();
+        self.update_item_pickup();
 
         if self.tick % 30 == 0 {
             self.try_spawn_goblin();
         }
         if self.tick % 45 == 0 {
             self.try_spawn_slime();
+        }
+
+        self.grid.swap_modified_flags();
+    }
+
+    fn update_score(&mut self) {
+        let mut new_kills = 0;
+        for e in self.entities.all_mut() {
+            if !e.alive && e.kind == EntityKind::Corpse && !e.counted_for_score {
+                e.counted_for_score = true;
+                new_kills += 1;
+            }
+        }
+        if new_kills > 0 {
+            self.kills += new_kills;
+            self.score += new_kills * 10;
+            if let Some(player) = self.player.entity_mut(&mut self.entities) {
+                player.add_xp(new_kills * 25);
+            }
+        }
+    }
+
+    fn update_status_effects(&mut self) {
+        for e in self.entities.all_mut() {
+            if e.alive {
+                e.apply_status_effects();
+            }
+        }
+    }
+
+    fn update_item_pickup(&mut self) {
+        let (px, py) = self.player.center(&self.entities);
+        let ix = px as i32;
+        let iy = py as i32;
+        let mut picked = Vec::new();
+        for (idx, item) in self.items.all().iter().enumerate() {
+            if (item.x - ix).abs() <= 1 && (item.y - iy).abs() <= 1 {
+                picked.push(idx);
+            }
+        }
+        for idx in picked.into_iter().rev() {
+            let item = self.items.all_mut().remove(idx);
+            self.ui.add_message(&format!("Picked up {}", item.name()));
+            self.player.inventory.push(item);
+        }
+    }
+
+    pub fn descend(&mut self) {
+        if let Some(e) = self.player.entity(&self.entities) {
+            let foot_x = e.cx as i32;
+            let foot_y = (e.cy + e.half_h).ceil() as i32;
+            if self.grid.get(foot_x, foot_y).material != MaterialId::Stairs {
+                return;
+            }
+        }
+        self.depth += 1;
+        self.grid = Grid::new();
+        self.entities = EntityManager::new();
+        self.player = Player::new(&mut self.entities);
+        self.projectiles = ProjectileManager::new();
+        self.items = ItemManager::new();
+        self.corpse_decomp_timer = 0;
+        self.init_world();
+        self.ui
+            .add_message(&format!("Descended to depth {}", self.depth));
+    }
+
+    pub fn use_item(&mut self, index: usize) {
+        if index >= self.player.inventory.len() {
+            return;
+        }
+        let item = self.player.inventory[index].clone();
+        let name = item.name();
+        if item.is_weapon() {
+            self.player.weapon = Some(item);
+            self.ui.add_message(&format!("Equipped {}", name));
+        } else if item.is_armor() {
+            self.player.armor = Some(item);
+            self.ui.add_message(&format!("Equipped {}", name));
+        } else if item.is_consumable() {
+            let heal = item.heal_amount();
+            if let Some(p) = self.player.entity_mut(&mut self.entities) {
+                p.health = (p.health + heal).min(p.max_health);
+            }
+            self.player.inventory.remove(index);
+            self.ui.add_message(&format!("Consumed {}", name));
+        }
+    }
+
+    pub fn drop_item(&mut self, index: usize) {
+        if index >= self.player.inventory.len() {
+            return;
+        }
+        let item = self.player.inventory.remove(index);
+        let (px, py) = self.player.center(&self.entities);
+        self.items.spawn(item.typ, px as i32, py as i32 + 1);
+        self.ui.add_message(&format!("Dropped {}", item.name()));
+    }
+
+    fn update_active_chunks(&mut self) {
+        self.grid.deactivate_all();
+
+        for e in self.entities.all() {
+            let (cx, cy) = e.center();
+            self.grid.activate_around(cx as i32, cy as i32, 2);
+        }
+
+        for p in self.projectiles.all() {
+            self.grid.activate_around(p.x as i32, p.y as i32, 1);
+        }
+
+        for item in self.items.all() {
+            self.grid.activate_around(item.x, item.y, 1);
+        }
+
+        let chunk_size = self.grid.chunk_size as i32;
+        for cy in 0..self.grid.chunks_y as i32 {
+            for cx in 0..self.grid.chunks_x as i32 {
+                let idx = self.grid.chunk_index(cx, cy);
+                if self.grid.chunks[idx].modified || self.grid.chunks[idx].was_modified {
+                    self.grid
+                        .activate_around(cx * chunk_size, cy * chunk_size, 1);
+                }
+            }
+        }
+    }
+
+    pub fn update_projectiles(&mut self) {
+        self.projectiles.update(&self.grid);
+        self.projectiles
+            .resolve_hits(&mut self.grid, self.entities.all_mut(), &mut self.ui);
+        self.projectiles.cull_dead();
+    }
+
+    pub fn player_shoot(&mut self, dir_x: f32, dir_y: f32) {
+        if self.tick > self.last_shot_tick && self.tick - self.last_shot_tick < self.shot_cooldown {
+            return;
+        }
+        let (px, py) = self.player.center(&self.entities);
+        let owner = self.player.entity_id;
+        let speed = if self.fireball_mode { 2.2 } else { 3.0 };
+        let vx = dir_x * speed;
+        let vy = dir_y * speed;
+        let typ = if self.fireball_mode {
+            ProjectileType::Fireball
+        } else if self.tick % 4 == 0 {
+            ProjectileType::MagicBolt
+        } else {
+            ProjectileType::Arrow
+        };
+        let spawn_x = px + dir_x * 3.0;
+        let spawn_y = py + dir_y * 3.0;
+        let damage_bonus = self
+            .player
+            .weapon
+            .as_ref()
+            .map(|w| w.damage_bonus())
+            .unwrap_or(0.0);
+        self.projectiles
+            .spawn(typ, spawn_x, spawn_y, vx, vy, owner, damage_bonus);
+        self.last_shot_tick = self.tick;
+    }
+
+    fn update_goblin_ai(&mut self) {
+        let (px, py) = self.player.center(&self.entities);
+        let goblin_data: Vec<(usize, f32, f32, f32)> = self
+            .entities
+            .all()
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.alive && e.kind == EntityKind::Goblin)
+            .map(|(i, e)| (i, e.cx, e.cy, e.health))
+            .collect();
+
+        for (idx, gx, gy, health) in goblin_data {
+            if !self.entities.all()[idx].rigid {
+                continue;
+            }
+            let dx = px - gx;
+            let dy = py - gy;
+            let dist_sq = dx * dx + dy * dy;
+            let dist = dist_sq.sqrt();
+            if dist < 0.5 {
+                continue;
+            }
+            let dir_x = dx / dist;
+            let _dir_y = dy / dist;
+            if health < 10.0 {
+                let flee = self.entities.all()[idx].cx < px;
+                let move_dir = if flee { -1.0 } else { 1.0 };
+                if let Some(e) = self.entities.all_mut().get_mut(idx) {
+                    e.set_horizontal_vel(move_dir * 0.6);
+                }
+            } else if dist > 6.0 {
+                if let Some(e) = self.entities.all_mut().get_mut(idx) {
+                    e.set_horizontal_vel(dir_x * 0.45);
+                }
+            } else if dist < 4.0 {
+                if let Some(e) = self.entities.all_mut().get_mut(idx) {
+                    e.set_horizontal_vel(-dir_x * 0.45);
+                }
+            }
+        }
+    }
+
+    fn decompose_corpses(&mut self) {
+        self.corpse_decomp_timer += 1;
+        if self.corpse_decomp_timer < 40 {
+            return;
+        }
+        self.corpse_decomp_timer = 0;
+        let mut drops: Vec<(i32, i32, usize, usize)> = Vec::new();
+        for (idx, e) in self.entities.all().iter().enumerate() {
+            if e.alive || e.kind != EntityKind::Corpse {
+                continue;
+            }
+            if e.bodies.is_empty() {
+                continue;
+            }
+            let alive_indices: Vec<usize> = e
+                .bodies
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| b.alive)
+                .map(|(i, _)| i)
+                .collect();
+            if alive_indices.is_empty() {
+                continue;
+            }
+            let pick = self.ca.random_usize(alive_indices.len());
+            let bi = alive_indices[pick];
+            let b = &e.bodies[bi];
+            let gx = b.x.floor() as i32;
+            let gy = b.y.floor() as i32;
+            if self.grid.in_bounds(gx, gy) && self.grid.get(gx, gy).is_empty() {
+                drops.push((gx, gy, idx, bi));
+            }
+        }
+        for (gx, gy, eidx, bidx) in drops {
+            self.grid.set_material(gx, gy, MaterialId::Flesh);
+            if let Some(e) = self.entities.all_mut().get_mut(eidx) {
+                if let Some(b) = e.bodies.get_mut(bidx) {
+                    b.alive = false;
+                    b.health = 0.0;
+                }
+                let alive_count = e.bodies.iter().filter(|b| b.alive).count();
+                if alive_count == 0 {
+                    e.health = 0.0;
+                }
+            }
         }
     }
 
@@ -328,7 +738,7 @@ impl Game {
             .map(|(i, e)| (i, e.cx, e.cy, e.rigid, e.health))
             .collect();
 
-        for (idx, sx, sy, rigid, health) in slime_data {
+        for (idx, sx, sy, rigid, _health) in slime_data {
             if !rigid {
                 continue;
             }
@@ -342,7 +752,7 @@ impl Game {
             let jump_phase = tick % 60;
             if jump_phase == 0 && dist < 40.0 {
                 let dir_x = dx / dist;
-                let dir_y = dy / dist;
+                let _dir_y = dy / dist;
                 let jump_power = 0.8 + (1.0 - dist / 40.0).min(0.5) * 0.5;
                 if let Some(e) = self.entities.all_mut().get_mut(idx) {
                     e.set_horizontal_vel(dir_x * jump_power);
@@ -381,24 +791,52 @@ impl Game {
             .map(|(i, e)| (i, e.kind, e.cx, e.cy, e.half_w, e.half_h))
             .collect();
 
-        for (idx, kind, ex, ey, ew, eh) in enemy_data {
+        for (_idx, kind, ex, ey, ew, eh) in enemy_data {
             let dx = (ex - player_center.0).abs();
             let dy = (ey - player_center.1).abs();
             if dx < ew + player_half_w && dy < eh + player_half_h {
                 if self.tick % 20 == 0 {
-                    let damage = match kind {
+                    let base = match kind {
                         EntityKind::Goblin => 8.0,
                         EntityKind::Slime => 5.0,
                         _ => 0.0,
                     };
+                    let armor = self
+                        .player
+                        .armor
+                        .as_ref()
+                        .map(|a| a.armor_bonus())
+                        .unwrap_or(0.0);
+                    let damage = (base - armor).max(0.0);
                     if damage > 0.0 {
+                        let player_before = self
+                            .entities
+                            .get(player_id)
+                            .map(|e| e.health)
+                            .unwrap_or(0.0);
                         if let Some(p) = self.entities.get_mut(player_id) {
                             p.take_damage(damage);
                         }
+                        let player_after = self
+                            .entities
+                            .get(player_id)
+                            .map(|e| e.health)
+                            .unwrap_or(0.0);
+                        self.ui.add_damage_number(
+                            player_center.0,
+                            player_center.1 - player_half_h - 2.0,
+                            &format!("-{:.0}", player_before - player_after),
+                        );
                         let knockback_dir = if player_center.0 < ex { -1.0 } else { 1.0 };
                         if let Some(p) = self.entities.get_mut(player_id) {
                             p.set_horizontal_vel(knockback_dir * 0.5);
                         }
+                        let msg = match kind {
+                            EntityKind::Goblin => "Goblin hits you!",
+                            EntityKind::Slime => "Slime burns you!",
+                            _ => "Enemy hits you!",
+                        };
+                        self.ui.add_message(msg);
                     }
                 }
             }
@@ -542,9 +980,10 @@ impl Game {
             e.sync_bodies_to_center();
 
             if touching_lava {
+                e.health -= 1.0;
                 for b in &mut e.bodies {
                     if b.alive {
-                        b.health -= 0.5;
+                        b.health -= 1.0;
                         if !b.on_fire {
                             b.on_fire = true;
                         }
@@ -552,6 +991,7 @@ impl Game {
                 }
             }
             if touching_fire {
+                e.health -= 0.15;
                 for b in &mut e.bodies {
                     if b.alive {
                         b.health -= 0.15;
@@ -562,6 +1002,7 @@ impl Game {
                 }
             }
             if touching_acid {
+                e.health -= 0.25;
                 for b in &mut e.bodies {
                     if b.alive {
                         b.health -= 0.25;
@@ -755,10 +1196,15 @@ impl Game {
         substeps: u32,
     ) {
         let grid = &self.grid;
-        let mut bodies = self.entities.all()[idx].bodies.clone();
-        let constraints = self.entities.all()[idx].constraints.clone();
+        let e = self.entities.all_mut().get_mut(idx).unwrap();
+        let alive = e.alive;
+        let bodies = &mut e.bodies;
+        let constraints = &e.constraints;
 
-        for b in &mut bodies {
+        let effective_substeps = if alive { substeps } else { 1 };
+        let constraint_iters = if alive { 4 } else { 1 };
+
+        for b in bodies.iter_mut() {
             if !b.alive {
                 continue;
             }
@@ -772,10 +1218,10 @@ impl Game {
             }
         }
 
-        for _ in 0..substeps {
-            solver.integrate(&mut bodies);
+        for _ in 0..effective_substeps {
+            solver.integrate(bodies);
 
-            for b in &mut bodies {
+            for b in bodies.iter_mut() {
                 if !b.alive {
                     continue;
                 }
@@ -797,19 +1243,15 @@ impl Game {
                 }
             }
 
-            for _ci in 0..4 {
-                solver.solve_constraints(&mut bodies, &constraints, 1);
-                for b in &mut bodies {
+            for _ci in 0..constraint_iters {
+                solver.solve_constraints(bodies, constraints, 1);
+                for b in bodies.iter_mut() {
                     if !b.alive {
                         continue;
                     }
                     resolve_grid_collision(grid, b);
                 }
             }
-        }
-
-        if let Some(e) = self.entities.all_mut().get_mut(idx) {
-            e.bodies = bodies;
         }
     }
 

@@ -96,14 +96,14 @@ impl BodyTemplate {
             p!(2, 5, 45, 25, 80, "boots"),
         ];
 
-        let n = parts.len();
+        let constraints = Self::proximity_constraints(1.5)(&parts);
         Self {
             name: "player".to_string(),
             half_w: 4.0,
             half_h: 6.0,
             radius: 0.5,
             parts,
-            constraints: Self::auto_constraints(n),
+            constraints,
         }
     }
 
@@ -160,14 +160,14 @@ impl BodyTemplate {
             p!(2, 4, 100, 170, 75, "skin"),
         ];
 
-        let n = parts.len();
+        let constraints = Self::proximity_constraints(1.5)(&parts);
         Self {
             name: "goblin".to_string(),
             half_w: 4.0,
             half_h: 6.0,
             radius: 0.5,
             parts,
-            constraints: Self::auto_constraints(n),
+            constraints,
         }
     }
 
@@ -245,6 +245,24 @@ impl BodyTemplate {
             }
         }
         c
+    }
+
+    fn proximity_constraints(max_dist: f32) -> impl Fn(&[BodyPart]) -> Vec<(usize, usize)> {
+        move |parts| {
+            let mut c = Vec::new();
+            let threshold = max_dist * max_dist;
+            for i in 0..parts.len() {
+                for j in (i + 1)..parts.len() {
+                    let dx = parts[i].x - parts[j].x;
+                    let dy = parts[i].y - parts[j].y;
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq <= threshold {
+                        c.push((i, j));
+                    }
+                }
+            }
+            c
+        }
     }
 
     pub fn apply_to(&self, entity: &mut Entity, cx: f32, cy: f32) {

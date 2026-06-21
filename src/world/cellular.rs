@@ -4,6 +4,7 @@ use crate::world::grid::Grid;
 pub struct CellularAutomaton {
     tick: u64,
     rng_state: u64,
+    temps: Vec<f32>,
 }
 
 impl CellularAutomaton {
@@ -11,6 +12,7 @@ impl CellularAutomaton {
         Self {
             tick: 0,
             rng_state: 0x1234567890ABCDEF,
+            temps: Vec::new(),
         }
     }
 
@@ -27,37 +29,73 @@ impl CellularAutomaton {
         self.rand() & 1 == 1
     }
 
+    #[inline]
+    fn apply_cell_rule(&mut self, grid: &mut Grid, x: i32, y: i32) {
+        let cell = grid.get(x, y);
+        if cell.updated_this_tick || cell.is_empty() || cell.is_static() {
+            return;
+        }
+        match cell.material {
+            MaterialId::Sand => self.update_sand(grid, x, y),
+            MaterialId::Water => self.update_water(grid, x, y),
+            MaterialId::Lava => self.update_lava(grid, x, y),
+            MaterialId::Steam => self.update_steam(grid, x, y),
+            MaterialId::Fire => self.update_fire(grid, x, y),
+            MaterialId::Smoke => self.update_smoke(grid, x, y),
+            MaterialId::Acid => self.update_acid(grid, x, y),
+            MaterialId::Flesh => self.update_flesh(grid, x, y),
+            MaterialId::Grass => self.update_grass(grid, x, y),
+            MaterialId::Dirt => self.update_dirt(grid, x, y),
+            _ => {}
+        }
+    }
+
+    pub fn random_u32(&mut self) -> u32 {
+        self.rand()
+    }
+
+    pub fn random_usize(&mut self, max: usize) -> usize {
+        if max == 0 {
+            return 0;
+        }
+        (self.rand() as usize) % max
+    }
+
     pub fn step(&mut self, grid: &mut Grid) {
         grid.reset_tick_flags();
         let flip = self.rand_bool();
-        let h = grid.height;
-        let w = grid.width;
+        let chunk_w = grid.chunk_size;
+        let chunks_x = grid.chunks_x;
+        let chunks_y = grid.chunks_y;
+        let grid_w = grid.width;
 
-        for y_idx in (0..h).rev() {
-            let y = y_idx as i32;
-            let xs: Vec<i32> = if flip {
-                (0..w as i32).collect()
-            } else {
-                (0..w as i32).rev().collect()
-            };
-
-            for x in xs {
-                let cell = grid.get(x, y);
-                if cell.updated_this_tick || cell.is_empty() || cell.is_static() {
-                    continue;
-                }
-                match cell.material {
-                    MaterialId::Sand => self.update_sand(grid, x, y),
-                    MaterialId::Water => self.update_water(grid, x, y),
-                    MaterialId::Lava => self.update_lava(grid, x, y),
-                    MaterialId::Steam => self.update_steam(grid, x, y),
-                    MaterialId::Fire => self.update_fire(grid, x, y),
-                    MaterialId::Smoke => self.update_smoke(grid, x, y),
-                    MaterialId::Acid => self.update_acid(grid, x, y),
-                    MaterialId::Flesh => self.update_flesh(grid, x, y),
-                    MaterialId::Grass => self.update_grass(grid, x, y),
-                    MaterialId::Dirt => self.update_dirt(grid, x, y),
-                    _ => {}
+        for cy in (0..chunks_y).rev() {
+            let y0 = cy * chunk_w;
+            let y1 = ((cy + 1) * chunk_w).min(grid.height);
+            for y_idx in (y0..y1).rev() {
+                let y = y_idx as i32;
+                if flip {
+                    for cx in 0..chunks_x {
+                        if !grid.is_chunk_active(cx as i32, cy as i32) {
+                            continue;
+                        }
+                        let x0 = cx * chunk_w;
+                        let x1 = ((cx + 1) * chunk_w).min(grid_w);
+                        for x in x0..x1 {
+                            self.apply_cell_rule(grid, x as i32, y);
+                        }
+                    }
+                } else {
+                    for cx in (0..chunks_x).rev() {
+                        if !grid.is_chunk_active(cx as i32, cy as i32) {
+                            continue;
+                        }
+                        let x0 = cx * chunk_w;
+                        let x1 = ((cx + 1) * chunk_w).min(grid_w);
+                        for x in (x0..x1).rev() {
+                            self.apply_cell_rule(grid, x as i32, y);
+                        }
+                    }
                 }
             }
         }
@@ -222,7 +260,9 @@ impl CellularAutomaton {
                     let i_l = grid.idx(x, y);
                     grid.cells[i_l] = new_lava;
                 }
-                MaterialId::Wood | MaterialId::Grass | MaterialId::Flesh if neighbor.temp < 300.0 => {
+                MaterialId::Wood | MaterialId::Grass | MaterialId::Flesh
+                    if neighbor.temp < 300.0 =>
+                {
                     let i_n = grid.idx(nx, ny);
                     grid.cells[i_n] = Cell::new(MaterialId::Fire);
                 }
@@ -302,10 +342,10 @@ impl CellularAutomaton {
             let mat = reg.get(neighbor.material);
             if mat.flammable && neighbor.temp < mat.ignition_temp {
                 let mut new_n = neighbor;
-            new_n.material = MaterialId::Fire;
-            new_n.temp = 400.0;
-            let i_n = grid.idx(nx, ny);
-            grid.cells[i_n] = new_n;
+                new_n.material = MaterialId::Fire;
+                new_n.temp = 400.0;
+                let i_n = grid.idx(nx, ny);
+                grid.cells[i_n] = new_n;
             }
         }
     }
@@ -406,45 +446,71 @@ impl CellularAutomaton {
 
     fn heat_transfer(&mut self, grid: &mut Grid) {
         let w = grid.width;
-        let h = grid.height;
-        let temps: Vec<f32> = grid.cells.iter().map(|c| c.temp).collect();
+        let size = w * grid.height;
+        self.temps.resize(size, 0.0);
+        for i in 0..size {
+            self.temps[i] = grid.cells[i].temp;
+        }
 
-        for y in 0..h {
-            for x in 0..w {
-                let i = y * w + x;
-                let cell = grid.cells[i];
-                if cell.is_empty() || cell.is_static() {
+        let chunk_w = grid.chunk_size;
+        for cy in 0..grid.chunks_y {
+            if !grid.chunks[grid.chunk_index(0, cy as i32)].active {
+                let mut any_active = false;
+                for cx in 0..grid.chunks_x {
+                    if grid.is_chunk_active(cx as i32, cy as i32) {
+                        any_active = true;
+                        break;
+                    }
+                }
+                if !any_active {
                     continue;
                 }
-                let reg = crate::world::material::MaterialRegistry::instance();
-                let mat = reg.get(cell.material);
-                let k = mat.heat_conductivity;
-                if k == 0.0 {
-                    continue;
-                }
-
-                let mut sum = 0.0;
-                let mut count = 0;
-                for &(dx, dy) in &NEIGHBORS4 {
-                    let nx = x as i32 + dx;
-                    let ny = y as i32 + dy;
-                    if nx < 0 || nx >= w as i32 || ny < 0 || ny >= h as i32 {
+            }
+            let y0 = cy * chunk_w;
+            let y1 = ((cy + 1) * chunk_w).min(grid.height);
+            for y in y0..y1 {
+                for cx in 0..grid.chunks_x {
+                    if !grid.is_chunk_active(cx as i32, cy as i32) {
                         continue;
                     }
-                    let ni = ny as usize * w + nx as usize;
-                    sum += temps[ni];
-                    count += 1;
-                }
-                if count > 0 {
-                    let avg = sum / count as f32;
-                    let mut new = cell;
-                    new.temp += (avg - cell.temp) * k * 0.1;
-                    grid.cells[i] = new;
+                    let x0 = cx * chunk_w;
+                    let x1 = ((cx + 1) * chunk_w).min(grid.width);
+                    for x in x0..x1 {
+                        let i = y * w + x;
+                        let cell = grid.cells[i];
+                        if cell.is_empty() || cell.is_static() {
+                            continue;
+                        }
+                        let reg = crate::world::material::MaterialRegistry::instance();
+                        let mat = reg.get(cell.material);
+                        let k = mat.heat_conductivity;
+                        if k == 0.0 {
+                            continue;
+                        }
+
+                        let mut sum = 0.0;
+                        let mut count = 0;
+                        for &(dx, dy) in &NEIGHBORS4 {
+                            let nx = x as i32 + dx;
+                            let ny = y as i32 + dy;
+                            if nx < 0 || nx >= w as i32 || ny < 0 || ny >= grid.height as i32 {
+                                continue;
+                            }
+                            let ni = ny as usize * w + nx as usize;
+                            sum += self.temps[ni];
+                            count += 1;
+                        }
+                        if count > 0 {
+                            let avg = sum / count as f32;
+                            let mut new = cell;
+                            new.temp += (avg - cell.temp) * k * 0.1;
+                            grid.cells[i] = new;
+                        }
+                    }
                 }
             }
         }
     }
-
 }
 
 const NEIGHBORS4: [(i32, i32); 4] = [(0, -1), (0, 1), (-1, 0), (1, 0)];

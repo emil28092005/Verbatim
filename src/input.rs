@@ -8,11 +8,19 @@ pub enum Action {
     MoveLeft,
     MoveRight,
     Jump,
+    ShootLeft,
+    ShootRight,
+    ShootUp,
+    ShootDown,
+    ToggleFireball,
     MoveCameraUp,
     MoveCameraDown,
     MoveCameraLeft,
     MoveCameraRight,
     Paint(MaterialBrush),
+    Descend,
+    UseItem,
+    DropItem,
     Quit,
 }
 
@@ -39,6 +47,10 @@ pub enum HeldKey {
     CamRight,
     CamUp,
     CamDown,
+    ShootLeft,
+    ShootRight,
+    ShootUp,
+    ShootDown,
 }
 
 struct HeldState {
@@ -70,16 +82,14 @@ impl InputHandler {
     pub fn start(&mut self) {
         let (tx, rx) = mpsc::channel::<Event>();
         self.receiver = Some(rx);
-        self.input_thread = Some(thread::spawn(move || {
-            loop {
-                match event::read() {
-                    Ok(ev) => {
-                        if tx.send(ev).is_err() {
-                            break;
-                        }
+        self.input_thread = Some(thread::spawn(move || loop {
+            match event::read() {
+                Ok(ev) => {
+                    if tx.send(ev).is_err() {
+                        break;
                     }
-                    Err(_) => break,
                 }
+                Err(_) => break,
             }
         }));
     }
@@ -94,10 +104,14 @@ impl InputHandler {
         match code {
             KeyCode::Left | KeyCode::Char('a') => Some(HeldKey::Left),
             KeyCode::Right | KeyCode::Char('d') => Some(HeldKey::Right),
-            KeyCode::Char('h') => Some(HeldKey::CamLeft),
-            KeyCode::Char('l') => Some(HeldKey::CamRight),
-            KeyCode::Char('k') => Some(HeldKey::CamUp),
-            KeyCode::Char('j') => Some(HeldKey::CamDown),
+            KeyCode::Char('y') => Some(HeldKey::CamLeft),
+            KeyCode::Char('u') => Some(HeldKey::CamRight),
+            KeyCode::Char('i') => Some(HeldKey::CamUp),
+            KeyCode::Char('o') => Some(HeldKey::CamDown),
+            KeyCode::Char('h') => Some(HeldKey::ShootLeft),
+            KeyCode::Char('l') => Some(HeldKey::ShootRight),
+            KeyCode::Char('k') => Some(HeldKey::ShootUp),
+            KeyCode::Char('j') => Some(HeldKey::ShootDown),
             _ => None,
         }
     }
@@ -121,7 +135,13 @@ impl InputHandler {
         };
 
         for ev in events {
-            if let Event::Key(KeyEvent { code, modifiers, kind, .. }) = ev {
+            if let Event::Key(KeyEvent {
+                code,
+                modifiers,
+                kind,
+                ..
+            }) = ev
+            {
                 let is_press = kind == KeyEventKind::Press;
                 let is_repeat = kind == KeyEventKind::Repeat;
                 let is_release = kind == KeyEventKind::Release;
@@ -141,28 +161,111 @@ impl InputHandler {
                             one_shots.push(Action::Quit);
                             continue;
                         }
-                        KeyCode::Char('1') => { self.paint_brush = MaterialBrush::Sand; one_shots.push(Action::Paint(MaterialBrush::Sand)); continue; }
-                        KeyCode::Char('2') => { self.paint_brush = MaterialBrush::Water; one_shots.push(Action::Paint(MaterialBrush::Water)); continue; }
-                        KeyCode::Char('3') => { self.paint_brush = MaterialBrush::Stone; one_shots.push(Action::Paint(MaterialBrush::Stone)); continue; }
-                        KeyCode::Char('4') => { self.paint_brush = MaterialBrush::Lava; one_shots.push(Action::Paint(MaterialBrush::Lava)); continue; }
-                        KeyCode::Char('5') => { self.paint_brush = MaterialBrush::Wood; one_shots.push(Action::Paint(MaterialBrush::Wood)); continue; }
-                        KeyCode::Char('6') => { self.paint_brush = MaterialBrush::Acid; one_shots.push(Action::Paint(MaterialBrush::Acid)); continue; }
-                        KeyCode::Char('7') => { self.paint_brush = MaterialBrush::Grass; one_shots.push(Action::Paint(MaterialBrush::Grass)); continue; }
-                        KeyCode::Char('8') => { self.paint_brush = MaterialBrush::Dirt; one_shots.push(Action::Paint(MaterialBrush::Dirt)); continue; }
-                        KeyCode::Char('9') => { self.paint_brush = MaterialBrush::Fire; one_shots.push(Action::Paint(MaterialBrush::Fire)); continue; }
-                        KeyCode::Char('0') => { self.paint_brush = MaterialBrush::Flesh; one_shots.push(Action::Paint(MaterialBrush::Flesh)); continue; }
-                        KeyCode::Char('x') => { self.paint_brush = MaterialBrush::Erase; one_shots.push(Action::Paint(MaterialBrush::Erase)); continue; }
+                        KeyCode::Char('1') => {
+                            self.paint_brush = MaterialBrush::Sand;
+                            one_shots.push(Action::Paint(MaterialBrush::Sand));
+                            continue;
+                        }
+                        KeyCode::Char('2') => {
+                            self.paint_brush = MaterialBrush::Water;
+                            one_shots.push(Action::Paint(MaterialBrush::Water));
+                            continue;
+                        }
+                        KeyCode::Char('3') => {
+                            self.paint_brush = MaterialBrush::Stone;
+                            one_shots.push(Action::Paint(MaterialBrush::Stone));
+                            continue;
+                        }
+                        KeyCode::Char('4') => {
+                            self.paint_brush = MaterialBrush::Lava;
+                            one_shots.push(Action::Paint(MaterialBrush::Lava));
+                            continue;
+                        }
+                        KeyCode::Char('5') => {
+                            self.paint_brush = MaterialBrush::Wood;
+                            one_shots.push(Action::Paint(MaterialBrush::Wood));
+                            continue;
+                        }
+                        KeyCode::Char('6') => {
+                            self.paint_brush = MaterialBrush::Acid;
+                            one_shots.push(Action::Paint(MaterialBrush::Acid));
+                            continue;
+                        }
+                        KeyCode::Char('7') => {
+                            self.paint_brush = MaterialBrush::Grass;
+                            one_shots.push(Action::Paint(MaterialBrush::Grass));
+                            continue;
+                        }
+                        KeyCode::Char('8') => {
+                            self.paint_brush = MaterialBrush::Dirt;
+                            one_shots.push(Action::Paint(MaterialBrush::Dirt));
+                            continue;
+                        }
+                        KeyCode::Char('9') => {
+                            self.paint_brush = MaterialBrush::Fire;
+                            one_shots.push(Action::Paint(MaterialBrush::Fire));
+                            continue;
+                        }
+                        KeyCode::Char('0') => {
+                            self.paint_brush = MaterialBrush::Flesh;
+                            one_shots.push(Action::Paint(MaterialBrush::Flesh));
+                            continue;
+                        }
+                        KeyCode::Char('x') => {
+                            self.paint_brush = MaterialBrush::Erase;
+                            one_shots.push(Action::Paint(MaterialBrush::Erase));
+                            continue;
+                        }
+                        KeyCode::Char('f') => {
+                            one_shots.push(Action::ToggleFireball);
+                            continue;
+                        }
+                        KeyCode::Char('>') => {
+                            one_shots.push(Action::Descend);
+                            continue;
+                        }
+                        KeyCode::Char('e') => {
+                            one_shots.push(Action::UseItem);
+                            continue;
+                        }
+                        KeyCode::Char('r') => {
+                            one_shots.push(Action::DropItem);
+                            continue;
+                        }
+                        KeyCode::Char('k') => {
+                            one_shots.push(Action::ShootUp);
+                            continue;
+                        }
+                        KeyCode::Char('j') => {
+                            one_shots.push(Action::ShootDown);
+                            continue;
+                        }
+                        KeyCode::Char('h') => {
+                            one_shots.push(Action::ShootLeft);
+                            continue;
+                        }
+                        KeyCode::Char('l') => {
+                            one_shots.push(Action::ShootRight);
+                            continue;
+                        }
                         _ => {}
                     }
                 }
 
                 if let Some(held_key) = Self::key_to_held(code) {
                     if is_press || is_repeat {
-                        let prev_got_release = self.held.get(&held_key).map(|s| s.got_release).unwrap_or(false);
-                        self.held.insert(held_key, HeldState {
-                            last_seen: Instant::now(),
-                            got_release: prev_got_release,
-                        });
+                        let prev_got_release = self
+                            .held
+                            .get(&held_key)
+                            .map(|s| s.got_release)
+                            .unwrap_or(false);
+                        self.held.insert(
+                            held_key,
+                            HeldState {
+                                last_seen: Instant::now(),
+                                got_release: prev_got_release,
+                            },
+                        );
                     } else if is_release {
                         self.release(held_key);
                         for state in self.held.values_mut() {
@@ -209,10 +312,31 @@ impl InputHandler {
             }
         }
 
-        if self.is_held(HeldKey::CamLeft) { actions.push(Action::MoveCameraLeft); }
-        if self.is_held(HeldKey::CamRight) { actions.push(Action::MoveCameraRight); }
-        if self.is_held(HeldKey::CamUp) { actions.push(Action::MoveCameraUp); }
-        if self.is_held(HeldKey::CamDown) { actions.push(Action::MoveCameraDown); }
+        if self.is_held(HeldKey::CamLeft) {
+            actions.push(Action::MoveCameraLeft);
+        }
+        if self.is_held(HeldKey::CamRight) {
+            actions.push(Action::MoveCameraRight);
+        }
+        if self.is_held(HeldKey::CamUp) {
+            actions.push(Action::MoveCameraUp);
+        }
+        if self.is_held(HeldKey::CamDown) {
+            actions.push(Action::MoveCameraDown);
+        }
+
+        if self.is_held(HeldKey::ShootLeft) {
+            actions.push(Action::ShootLeft);
+        }
+        if self.is_held(HeldKey::ShootRight) {
+            actions.push(Action::ShootRight);
+        }
+        if self.is_held(HeldKey::ShootUp) {
+            actions.push(Action::ShootUp);
+        }
+        if self.is_held(HeldKey::ShootDown) {
+            actions.push(Action::ShootDown);
+        }
 
         actions
     }
@@ -239,5 +363,4 @@ impl MaterialBrush {
             MaterialBrush::Erase => None,
         }
     }
-
 }
