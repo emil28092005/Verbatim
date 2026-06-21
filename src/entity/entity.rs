@@ -7,6 +7,7 @@ pub type EntityId = u32;
 pub enum EntityKind {
     Player,
     Goblin,
+    Slime,
     Corpse,
 }
 
@@ -90,7 +91,10 @@ impl Entity {
                 b.set_vel(cvx + (b.x - self.cx) * 0.3, cvy + (b.y - self.cy) * 0.3);
             }
         }
-        if self.kind == EntityKind::Player || self.kind == EntityKind::Goblin {
+        if self.kind == EntityKind::Player
+            || self.kind == EntityKind::Goblin
+            || self.kind == EntityKind::Slime
+        {
             self.kind = EntityKind::Corpse;
         }
     }
@@ -175,6 +179,10 @@ impl EntityManager {
             EntityKind::Goblin => {
                 e.max_health = 40.0;
                 e.health = 40.0;
+            }
+            EntityKind::Slime => {
+                e.max_health = 25.0;
+                e.health = 25.0;
             }
             EntityKind::Corpse => {
                 e.alive = false;

@@ -126,6 +126,7 @@ impl Renderer for TerminalRenderer {
                     let ch = match e.kind {
                         crate::entity::EntityKind::Player if e.alive => '@',
                         crate::entity::EntityKind::Goblin if e.alive => 'g',
+                        crate::entity::EntityKind::Slime if e.alive => 's',
                         _ => '%',
                     };
                     let fg = if e.on_fire {

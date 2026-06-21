@@ -217,6 +217,7 @@ impl VulkanRenderer {
                     let ch = match e.kind {
                         EntityKind::Player if e.alive => '@',
                         EntityKind::Goblin if e.alive => 'g',
+                        EntityKind::Slime if e.alive => 's',
                         _ => '%',
                     };
                     let fg = if e.on_fire {

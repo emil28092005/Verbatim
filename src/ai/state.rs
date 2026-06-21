@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
-use crate::entity::{EntityManager, EntityKind};
-use crate::world::grid::Grid;
-use crate::world::cell::MaterialId;
-use crate::world::material::MaterialRegistry;
+use crate::entity::{EntityKind, EntityManager};
 use crate::game::Game;
+use crate::world::cell::MaterialId;
+use crate::world::grid::Grid;
+use crate::world::material::MaterialRegistry;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameState {
@@ -54,7 +54,8 @@ impl CellInfo {
     pub fn from_grid(grid: &Grid, x: i32, y: i32) -> Self {
         if !grid.in_bounds(x, y) {
             return Self {
-                x, y,
+                x,
+                y,
                 material: "out_of_bounds".to_string(),
                 temp: 0.0,
                 is_solid: false,
@@ -66,7 +67,8 @@ impl CellInfo {
         let reg = MaterialRegistry::instance();
         let mat = reg.get(cell.material);
         Self {
-            x, y,
+            x,
+            y,
             material: mat.name.to_string(),
             temp: cell.temp,
             is_solid: mat.solid,
@@ -78,18 +80,23 @@ impl CellInfo {
 
 pub fn entity_info(e: &crate::entity::entity::Entity) -> EntityInfo {
     let (px, py) = e.center();
-    let bodies: Vec<SubBodyInfo> = e.bodies.iter().enumerate().map(|(i, b)| {
-        let reg = MaterialRegistry::instance();
-        SubBodyInfo {
-            idx: i,
-            pos: [b.x, b.y],
-            vel: [b.vx(), b.vy()],
-            health: b.health,
-            alive: b.alive,
-            on_fire: b.on_fire,
-            material: reg.get(b.material).name.to_string(),
-        }
-    }).collect();
+    let bodies: Vec<SubBodyInfo> = e
+        .bodies
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            let reg = MaterialRegistry::instance();
+            SubBodyInfo {
+                idx: i,
+                pos: [b.x, b.y],
+                vel: [b.vx(), b.vy()],
+                health: b.health,
+                alive: b.alive,
+                on_fire: b.on_fire,
+                material: reg.get(b.material).name.to_string(),
+            }
+        })
+        .collect();
 
     EntityInfo {
         id: e.id,
@@ -107,7 +114,9 @@ pub fn entity_info(e: &crate::entity::entity::Entity) -> EntityInfo {
 pub fn build_game_state(game: &Game, view_w: usize, view_h: usize) -> GameState {
     let player_info = game.player.entity(&game.entities).map(entity_info);
 
-    let entities: Vec<EntityInfo> = game.entities.all()
+    let entities: Vec<EntityInfo> = game
+        .entities
+        .all()
         .iter()
         .filter(|e| e.id != game.player.entity_id)
         .map(entity_info)
@@ -129,17 +138,27 @@ pub fn build_game_state(game: &Game, view_w: usize, view_h: usize) -> GameState 
     }
 }
 
-pub fn render_view(grid: &Grid, entities: &EntityManager, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+pub fn render_view(
+    grid: &Grid,
+    entities: &EntityManager,
+    cam_x: i32,
+    cam_y: i32,
+    vw: usize,
+    vh: usize,
+) -> String {
     let mut entity_map = std::collections::HashMap::new();
     for e in entities.all() {
         for b in &e.bodies {
-            if !b.alive { continue; }
+            if !b.alive {
+                continue;
+            }
             let sx = b.x as i32 - cam_x;
             let sy = b.y as i32 - cam_y;
             if sx >= 0 && sx < vw as i32 && sy >= 0 && sy < vh as i32 {
                 let ch = match e.kind {
                     EntityKind::Player if e.alive => '@',
                     EntityKind::Goblin if e.alive => 'g',
+                    EntityKind::Slime if e.alive => 's',
                     _ => '%',
                 };
                 entity_map.insert((sx, sy), ch);
@@ -190,6 +209,7 @@ pub fn entity_kind_name(kind: EntityKind) -> &'static str {
     match kind {
         EntityKind::Player => "Player",
         EntityKind::Goblin => "Goblin",
+        EntityKind::Slime => "Slime",
         EntityKind::Corpse => "Corpse",
     }
 }
@@ -198,6 +218,7 @@ pub fn parse_entity_kind(name: &str) -> Option<EntityKind> {
     match name.to_lowercase().as_str() {
         "player" => Some(EntityKind::Player),
         "goblin" => Some(EntityKind::Goblin),
+        "slime" => Some(EntityKind::Slime),
         "corpse" => Some(EntityKind::Corpse),
         _ => None,
     }

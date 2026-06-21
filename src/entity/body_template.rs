@@ -171,6 +171,41 @@ impl BodyTemplate {
         }
     }
 
+    pub fn slime() -> Self {
+        let parts = vec![
+            p!(-2, -1, 60, 180, 80, "body"),
+            p!(-1, -2, 80, 200, 100, "body"),
+            p!(0, -2, 90, 210, 110, "body"),
+            p!(1, -2, 80, 200, 100, "body"),
+            p!(2, -1, 60, 180, 80, "body"),
+            p!(-2, 0, 70, 190, 90, "body"),
+            p!(-1, 0, 100, 220, 130, "body"),
+            p!(0, 0, 110, 230, 140, "body"),
+            p!(1, 0, 100, 220, 130, "body"),
+            p!(2, 0, 70, 190, 90, "body"),
+            p!(-2, 1, 50, 170, 70, "body"),
+            p!(-1, 1, 80, 200, 100, "body"),
+            p!(0, 1, 90, 210, 110, "body"),
+            p!(1, 1, 80, 200, 100, "body"),
+            p!(2, 1, 50, 170, 70, "body"),
+            p!(-1, 2, 40, 160, 60, "body"),
+            p!(0, 2, 50, 170, 70, "body"),
+            p!(1, 2, 40, 160, 60, "body"),
+            p!(-1, -1, 120, 230, 150, "eye"),
+            p!(1, -1, 120, 230, 150, "eye"),
+        ];
+
+        let n = parts.len();
+        Self {
+            name: "slime".to_string(),
+            half_w: 3.0,
+            half_h: 2.0,
+            radius: 0.5,
+            parts,
+            constraints: Self::auto_constraints(n),
+        }
+    }
+
     pub fn boulder() -> Self {
         let parts = vec![
             p!(-1, -2, 100, 100, 110, "rock"),
@@ -311,6 +346,7 @@ pub fn template_for_kind(kind: EntityKind) -> BodyTemplate {
     match kind {
         EntityKind::Player => BodyTemplate::humanoid_player(),
         EntityKind::Goblin => BodyTemplate::humanoid_goblin(),
+        EntityKind::Slime => BodyTemplate::slime(),
         EntityKind::Corpse => BodyTemplate::humanoid_player(),
     }
 }

@@ -1,14 +1,14 @@
 use std::time::{Duration, Instant};
 
-use crate::entity::{EntityManager, EntityKind};
+use crate::entity::player::Player;
+use crate::entity::{EntityKind, EntityManager};
 use crate::input::{Action, InputHandler};
-use crate::physics::verlet::VerletSolver;
 use crate::physics::collision::resolve_grid_collision;
+use crate::physics::verlet::VerletSolver;
 use crate::render::Renderer;
 use crate::world::cell::MaterialId;
-use crate::world::grid::Grid;
 use crate::world::cellular::CellularAutomaton;
-use crate::entity::player::Player;
+use crate::world::grid::Grid;
 
 pub struct Game {
     pub grid: Grid,
@@ -52,8 +52,10 @@ impl Game {
         let h = self.grid.height;
 
         for x in 0..w {
-            self.grid.set_material(x as i32, (h - 1) as i32, MaterialId::Stone);
-            self.grid.set_material(x as i32, (h - 2) as i32, MaterialId::Dirt);
+            self.grid
+                .set_material(x as i32, (h - 1) as i32, MaterialId::Stone);
+            self.grid
+                .set_material(x as i32, (h - 2) as i32, MaterialId::Dirt);
         }
 
         for x in 0..w {
@@ -101,7 +103,8 @@ impl Game {
             self.grid.set_material(wood_x + 4, y, MaterialId::Wood);
         }
         for x in wood_x..=wood_x + 4 {
-            self.grid.set_material(x, wood_surface - 8, MaterialId::Wood);
+            self.grid
+                .set_material(x, wood_surface - 8, MaterialId::Wood);
         }
 
         // Sand dune (right of center)
@@ -145,7 +148,9 @@ impl Game {
         let surface_x = cx as i32;
         let mut surface_y = h as i32 - 3;
         for y in 0..h as i32 {
-            if self.grid.get(surface_x, y).is_solid() && self.grid.get(surface_x, y).material != MaterialId::Stone {
+            if self.grid.get(surface_x, y).is_solid()
+                && self.grid.get(surface_x, y).material != MaterialId::Stone
+            {
                 surface_y = y;
                 break;
             }
@@ -224,7 +229,11 @@ impl Game {
                                 if let Some(m) = mat {
                                     self.grid.set_material(cx + dx, cy + dy, m);
                                 } else {
-                                    self.grid.set(cx + dx, cy + dy, crate::world::cell::Cell::empty());
+                                    self.grid.set(
+                                        cx + dx,
+                                        cy + dy,
+                                        crate::world::cell::Cell::empty(),
+                                    );
                                 }
                             }
                         }
@@ -293,11 +302,106 @@ impl Game {
         self.ca.step(&mut self.grid);
 
         self.update_entities();
+        self.update_slime_ai();
+        self.update_combat();
 
         self.apply_world_damage();
 
         if self.tick % 30 == 0 {
             self.try_spawn_goblin();
+        }
+        if self.tick % 45 == 0 {
+            self.try_spawn_slime();
+        }
+    }
+
+    fn update_slime_ai(&mut self) {
+        let (px, py) = self.player.center(&self.entities);
+        let tick = self.tick;
+
+        let slime_data: Vec<(usize, f32, f32, bool, f32)> = self
+            .entities
+            .all()
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.alive && e.kind == EntityKind::Slime)
+            .map(|(i, e)| (i, e.cx, e.cy, e.rigid, e.health))
+            .collect();
+
+        for (idx, sx, sy, rigid, health) in slime_data {
+            if !rigid {
+                continue;
+            }
+            let dx = px - sx;
+            let dy = py - sy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist < 0.5 {
+                continue;
+            }
+
+            let jump_phase = tick % 60;
+            if jump_phase == 0 && dist < 40.0 {
+                let dir_x = dx / dist;
+                let dir_y = dy / dist;
+                let jump_power = 0.8 + (1.0 - dist / 40.0).min(0.5) * 0.5;
+                if let Some(e) = self.entities.all_mut().get_mut(idx) {
+                    e.set_horizontal_vel(dir_x * jump_power);
+                    e.set_vertical_vel(-jump_power * 0.8);
+                }
+            } else if jump_phase == 30 {
+                if let Some(e) = self.entities.all_mut().get_mut(idx) {
+                    e.set_horizontal_vel(0.0);
+                }
+            }
+        }
+    }
+
+    fn update_combat(&mut self) {
+        let player_id = self.player.entity_id;
+        let player_center = self.player.center(&self.entities);
+        let player_half_w = self
+            .entities
+            .get(player_id)
+            .map(|e| e.half_w)
+            .unwrap_or(3.0);
+        let player_half_h = self
+            .entities
+            .get(player_id)
+            .map(|e| e.half_h)
+            .unwrap_or(6.0);
+
+        let enemy_data: Vec<(usize, EntityKind, f32, f32, f32, f32)> = self
+            .entities
+            .all()
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                e.alive && e.kind != EntityKind::Player && e.kind != EntityKind::Corpse
+            })
+            .map(|(i, e)| (i, e.kind, e.cx, e.cy, e.half_w, e.half_h))
+            .collect();
+
+        for (idx, kind, ex, ey, ew, eh) in enemy_data {
+            let dx = (ex - player_center.0).abs();
+            let dy = (ey - player_center.1).abs();
+            if dx < ew + player_half_w && dy < eh + player_half_h {
+                if self.tick % 20 == 0 {
+                    let damage = match kind {
+                        EntityKind::Goblin => 8.0,
+                        EntityKind::Slime => 5.0,
+                        _ => 0.0,
+                    };
+                    if damage > 0.0 {
+                        if let Some(p) = self.entities.get_mut(player_id) {
+                            p.take_damage(damage);
+                        }
+                        let knockback_dir = if player_center.0 < ex { -1.0 } else { 1.0 };
+                        if let Some(p) = self.entities.get_mut(player_id) {
+                            p.set_horizontal_vel(knockback_dir * 0.5);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -374,16 +478,23 @@ impl Game {
                 // Blocked — resolve X
                 let (resolved_x, hit) = self.resolve_aabb_x(idx, nx, ny, half_w, half_h, nvx);
                 nx = resolved_x;
-                if hit { nvx = 0.0; }
+                if hit {
+                    nvx = 0.0;
+                }
             }
         }
 
         // Step 2: Vertical movement
         ny += nvy;
-        let (resolved_y, hit_floor, hit_ceiling) = self.resolve_aabb_y(idx, nx, ny, half_w, half_h, nvy > 0.0);
+        let (resolved_y, hit_floor, hit_ceiling) =
+            self.resolve_aabb_y(idx, nx, ny, half_w, half_h, nvy > 0.0);
         ny = resolved_y;
-        if hit_floor { nvy = 0.0; }
-        if hit_ceiling { nvy = 0.0; }
+        if hit_floor {
+            nvy = 0.0;
+        }
+        if hit_ceiling {
+            nvy = 0.0;
+        }
 
         // Check material contacts
         let (touching_lava, touching_fire, touching_acid, in_liquid) = {
@@ -398,12 +509,22 @@ impl Game {
             let max_y = (ny + half_h).ceil() as i32;
             for y in min_y..=max_y {
                 for x in min_x..=max_x {
-                    if !grid.in_bounds(x, y) { continue; }
+                    if !grid.in_bounds(x, y) {
+                        continue;
+                    }
                     let cell = grid.get(x, y);
-                    if cell.material == MaterialId::Lava { tl = true; }
-                    if cell.material == MaterialId::Fire { tf = true; }
-                    if cell.material == MaterialId::Acid { ta = true; }
-                    if cell.is_liquid() { il = true; }
+                    if cell.material == MaterialId::Lava {
+                        tl = true;
+                    }
+                    if cell.material == MaterialId::Fire {
+                        tf = true;
+                    }
+                    if cell.material == MaterialId::Acid {
+                        ta = true;
+                    }
+                    if cell.is_liquid() {
+                        il = true;
+                    }
                 }
             }
             (tl, tf, ta, il)
@@ -424,7 +545,9 @@ impl Game {
                 for b in &mut e.bodies {
                     if b.alive {
                         b.health -= 0.5;
-                        if !b.on_fire { b.on_fire = true; }
+                        if !b.on_fire {
+                            b.on_fire = true;
+                        }
                     }
                 }
             }
@@ -432,13 +555,17 @@ impl Game {
                 for b in &mut e.bodies {
                     if b.alive {
                         b.health -= 0.15;
-                        if !b.on_fire && b.health < 80.0 { b.on_fire = true; }
+                        if !b.on_fire && b.health < 80.0 {
+                            b.on_fire = true;
+                        }
                     }
                 }
             }
             if touching_acid {
                 for b in &mut e.bodies {
-                    if b.alive { b.health -= 0.25; }
+                    if b.alive {
+                        b.health -= 0.25;
+                    }
                 }
             }
         }
@@ -458,9 +585,13 @@ impl Game {
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
-                if !grid.in_bounds(x, y) { continue; }
+                if !grid.in_bounds(x, y) {
+                    continue;
+                }
                 let cell = grid.get(x, y);
-                if !cell.is_solid() { continue; }
+                if !cell.is_solid() {
+                    continue;
+                }
                 let cl = x as f32;
                 let cr = (x + 1) as f32;
                 let ct = y as f32;
@@ -473,7 +604,15 @@ impl Game {
         false
     }
 
-    fn resolve_aabb_x(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, vx: f32) -> (f32, bool) {
+    fn resolve_aabb_x(
+        &self,
+        _idx: usize,
+        cx: f32,
+        cy: f32,
+        hw: f32,
+        hh: f32,
+        vx: f32,
+    ) -> (f32, bool) {
         let grid = &self.grid;
         let left = cx - hw;
         let right = cx + hw;
@@ -490,9 +629,13 @@ impl Game {
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
-                if !grid.in_bounds(x, y) { continue; }
+                if !grid.in_bounds(x, y) {
+                    continue;
+                }
                 let cell = grid.get(x, y);
-                if !cell.is_solid() { continue; }
+                if !cell.is_solid() {
+                    continue;
+                }
 
                 let cell_left = x as f32;
                 let cell_right = (x + 1) as f32;
@@ -532,7 +675,15 @@ impl Game {
         (new_cx, hit)
     }
 
-    fn resolve_aabb_y(&self, _idx: usize, cx: f32, cy: f32, hw: f32, hh: f32, moving_down: bool) -> (f32, bool, bool) {
+    fn resolve_aabb_y(
+        &self,
+        _idx: usize,
+        cx: f32,
+        cy: f32,
+        hw: f32,
+        hh: f32,
+        moving_down: bool,
+    ) -> (f32, bool, bool) {
         let grid = &self.grid;
         let left = cx - hw;
         let right = cx + hw;
@@ -550,9 +701,13 @@ impl Game {
 
         for y in min_y..=max_y {
             for x in min_x..=max_x {
-                if !grid.in_bounds(x, y) { continue; }
+                if !grid.in_bounds(x, y) {
+                    continue;
+                }
                 let cell = grid.get(x, y);
-                if !cell.is_solid() { continue; }
+                if !cell.is_solid() {
+                    continue;
+                }
 
                 let cell_left = x as f32;
                 let cell_right = (x + 1) as f32;
@@ -593,7 +748,12 @@ impl Game {
         (new_cy, hit_floor, hit_ceiling)
     }
 
-    fn update_ragdoll_entity(&mut self, idx: usize, solver: &crate::physics::verlet::VerletSolver, substeps: u32) {
+    fn update_ragdoll_entity(
+        &mut self,
+        idx: usize,
+        solver: &crate::physics::verlet::VerletSolver,
+        substeps: u32,
+    ) {
         let grid = &self.grid;
         let mut bodies = self.entities.all()[idx].bodies.clone();
         let constraints = self.entities.all()[idx].constraints.clone();
@@ -622,11 +782,15 @@ impl Game {
                 let result = resolve_grid_collision(grid, b);
                 if result.touching_lava {
                     b.health -= 0.5;
-                    if !b.on_fire { b.on_fire = true; }
+                    if !b.on_fire {
+                        b.on_fire = true;
+                    }
                 }
                 if result.touching_fire {
                     b.health -= 0.15;
-                    if !b.on_fire && b.health < 80.0 { b.on_fire = true; }
+                    if !b.on_fire && b.health < 80.0 {
+                        b.on_fire = true;
+                    }
                 }
                 if result.touching_acid {
                     b.health -= 0.25;
@@ -673,7 +837,12 @@ impl Game {
     }
 
     fn try_spawn_goblin(&mut self) {
-        let alive_goblins = self.entities.all().iter().filter(|e| e.alive && e.kind == EntityKind::Goblin).count();
+        let alive_goblins = self
+            .entities
+            .all()
+            .iter()
+            .filter(|e| e.alive && e.kind == EntityKind::Goblin)
+            .count();
         if alive_goblins >= 3 {
             return;
         }
@@ -701,6 +870,43 @@ impl Game {
         let id = self.entities.spawn(EntityKind::Goblin);
         if let Some(g) = self.entities.get_mut(id) {
             g.build_humanoid(spawn_x as f32, spawn_y as f32);
+        }
+    }
+
+    fn try_spawn_slime(&mut self) {
+        let alive_slimes = self
+            .entities
+            .all()
+            .iter()
+            .filter(|e| e.alive && e.kind == EntityKind::Slime)
+            .count();
+        if alive_slimes >= 2 {
+            return;
+        }
+
+        let (px, _py) = self.player.center(&self.entities);
+        let spawn_x = px as i32 + if px as i32 % 2 == 0 { -18 } else { 18 };
+        if !self.grid.in_bounds(spawn_x, 0) {
+            return;
+        }
+
+        let mut surface_y = self.grid.height as i32 - 3;
+        for y in 0..self.grid.height as i32 {
+            let cell = self.grid.get(spawn_x, y);
+            if cell.is_solid() && cell.material != MaterialId::Stone {
+                surface_y = y;
+                break;
+            }
+        }
+        let spawn_y = surface_y - 3;
+
+        if !self.grid.in_bounds(spawn_x, spawn_y) {
+            return;
+        }
+
+        let id = self.entities.spawn(EntityKind::Slime);
+        if let Some(s) = self.entities.get_mut(id) {
+            s.build_humanoid(spawn_x as f32, spawn_y as f32);
         }
     }
 }
