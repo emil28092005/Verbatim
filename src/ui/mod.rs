@@ -464,6 +464,197 @@ impl UiLayer {
         }
     }
 
+    pub fn draw_inventory_overlay(
+        &mut self,
+        screen_w: usize,
+        screen_h: usize,
+        player_state: &crate::entity::player::Player,
+        mouse_ui_x: i32,
+        mouse_ui_y: i32,
+    ) -> Vec<(usize, i32, i32)> {
+        let bg = [15u8, 18, 28];
+        let border = [160u8, 180, 255];
+        let title_col = [220u8, 230, 255];
+        let dim = [120u8, 130, 160];
+        let slot_bg = [30u8, 36, 50];
+        let slot_border = [80u8, 100, 140];
+        let hover_border = [255u8, 220, 100];
+
+        let cols = 4i32;
+        let rows = 2i32;
+        let slot_w = 8i32;
+        let slot_h = 6i32;
+        let gap = 2i32;
+        let panel_w = cols * slot_w + (cols + 1) * gap + 4;
+        let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+
+        let px_start = (screen_w as i32 - panel_w) / 2;
+        let py_start = (screen_h as i32 - panel_h) / 2;
+
+        for y in 0..panel_h {
+            for x in 0..panel_w {
+                self.set_alpha(px_start + x, py_start + y, ' ', [0, 0, 0], bg, 200);
+            }
+        }
+        for x in 0..panel_w {
+            if x % 2 == 0 {
+                self.set_alpha(px_start + x, py_start, '.', border, bg, 240);
+                self.set_alpha(px_start + x, py_start + panel_h - 1, '.', border, bg, 240);
+            }
+        }
+        for y in 0..panel_h {
+            if y % 2 == 0 {
+                self.set_alpha(px_start, py_start + y, '.', border, bg, 240);
+                self.set_alpha(px_start + panel_w - 1, py_start + y, '.', border, bg, 240);
+            }
+        }
+        self.set_alpha(px_start, py_start, '*', border, bg, 240);
+        self.set_alpha(px_start + panel_w - 1, py_start, '*', border, bg, 240);
+        self.set_alpha(px_start, py_start + panel_h - 1, '*', border, bg, 240);
+        self.set_alpha(
+            px_start + panel_w - 1,
+            py_start + panel_h - 1,
+            '*',
+            border,
+            bg,
+            240,
+        );
+
+        let title = "INVENTORY";
+        self.draw_text(px_start + 4, py_start + 3, title, title_col, 255);
+        let count_text = format!("({}/{} items)", player_state.inventory.len(), cols * rows);
+        self.draw_text(
+            px_start + 4 + Self::text_width(title) + 2,
+            py_start + 3,
+            &count_text,
+            dim,
+            200,
+        );
+
+        let mut hover_slot: Option<usize> = None;
+        let mut slots: Vec<(usize, i32, i32)> = Vec::new();
+
+        for row in 0..rows {
+            for col in 0..cols {
+                let idx = (row * cols + col) as usize;
+                let sx = px_start + gap + col * (slot_w + gap) + 2;
+                let sy = py_start + 10 + row * (slot_h + gap) + gap;
+
+                for y in 0..slot_h {
+                    for x in 0..slot_w {
+                        self.set_alpha(sx + x, sy + y, ' ', [0, 0, 0], slot_bg, 200);
+                    }
+                }
+                let sb = if mouse_ui_x >= sx
+                    && mouse_ui_x < sx + slot_w
+                    && mouse_ui_y >= sy
+                    && mouse_ui_y < sy + slot_h
+                {
+                    hover_slot = Some(idx);
+                    hover_border
+                } else {
+                    slot_border
+                };
+                for x in 0..slot_w {
+                    self.set_alpha(sx + x, sy, '.', sb, slot_bg, 240);
+                    self.set_alpha(sx + x, sy + slot_h - 1, '.', sb, slot_bg, 240);
+                }
+                for y in 0..slot_h {
+                    self.set_alpha(sx, sy + y, '.', sb, slot_bg, 240);
+                    self.set_alpha(sx + slot_w - 1, sy + y, '.', sb, slot_bg, 240);
+                }
+
+                if idx < player_state.inventory.len() {
+                    let item = &player_state.inventory[idx];
+                    let [ch1, ch2] = item.display_glyph();
+                    let col = item.color();
+                    let cx = sx + slot_w / 2 - 1;
+                    let cy = sy + slot_h / 2 - 1;
+                    self.set(cx, cy, ch1, col, slot_bg);
+                    self.set(
+                        cx + 1,
+                        cy,
+                        ch2,
+                        [col[0] / 2, col[1] / 2, col[2] / 2],
+                        slot_bg,
+                    );
+
+                    let label = item.name();
+                    let label_w = Self::text_width(label) as i32;
+                    let lx = sx + (slot_w - label_w) / 2;
+                    let ly = sy + slot_h - 1;
+                    if lx >= sx && lx + label_w <= sx + slot_w {
+                        self.draw_text(lx, ly, label, dim, 200);
+                    }
+
+                    if hover_slot == Some(idx) {
+                        let action = if item.is_consumable() {
+                            "L-click: Use"
+                        } else if item.is_weapon() {
+                            if player_state
+                                .weapon
+                                .as_ref()
+                                .map(|w| w.typ == item.typ)
+                                .unwrap_or(false)
+                            {
+                                "Equipped"
+                            } else {
+                                "L-click: Equip"
+                            }
+                        } else if item.is_armor() {
+                            if player_state
+                                .armor
+                                .as_ref()
+                                .map(|a| a.typ == item.typ)
+                                .unwrap_or(false)
+                            {
+                                "Equipped"
+                            } else {
+                                "L-click: Equip"
+                            }
+                        } else {
+                            "L-click: Use"
+                        };
+                        self.draw_text(sx, sy + slot_h, action, hover_border, 240);
+                    }
+                } else if hover_slot == Some(idx) {
+                    self.draw_text(sx + 1, sy + slot_h / 2, "empty", dim, 200);
+                }
+
+                slots.push((idx, sx, sy));
+            }
+        }
+
+        if player_state.weapon.is_some() || player_state.armor.is_some() {
+            let eq_y = py_start + panel_h - 6;
+            self.draw_text(px_start + 4, eq_y, "EQ:", dim, 200);
+            let mut eq_x = px_start + 8;
+            if let Some(ref w) = player_state.weapon {
+                let [c1, c2] = w.display_glyph();
+                let col = w.color();
+                self.set(eq_x, eq_y, c1, col, bg);
+                self.set(eq_x + 1, eq_y, c2, [col[0] / 2, col[1] / 2, col[2] / 2], bg);
+                eq_x += 4;
+            }
+            if let Some(ref a) = player_state.armor {
+                let [c1, c2] = a.display_glyph();
+                let col = a.color();
+                self.set(eq_x, eq_y, c1, col, bg);
+                self.set(eq_x + 1, eq_y, c2, [col[0] / 2, col[1] / 2, col[2] / 2], bg);
+            }
+        }
+
+        self.draw_text(
+            px_start + 4,
+            py_start + panel_h - 3,
+            "Tab: close  L-click: use  R-click: drop",
+            dim,
+            200,
+        );
+
+        slots
+    }
+
     pub fn draw_hud(
         &mut self,
         screen_w: usize,

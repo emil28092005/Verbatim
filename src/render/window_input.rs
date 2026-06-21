@@ -23,8 +23,14 @@ pub struct WindowInput {
     pub mouse_y: f64,
     pub mouse_left: bool,
     pub mouse_left_was_down: bool,
+    pub mouse_right: bool,
+    pub mouse_right_was_down: bool,
     pub shoot_mouse: bool,
+    pub inventory_toggle: bool,
+    pub inventory_click: Option<(f64, f64)>,
+    pub inventory_right_click: Option<(f64, f64)>,
     jump_was_down: bool,
+    inventory_tab_was_down: bool,
     shoot_left_was_down: bool,
     shoot_right_was_down: bool,
     shoot_up_was_down: bool,
@@ -60,8 +66,14 @@ impl WindowInput {
             mouse_y: 0.0,
             mouse_left: false,
             mouse_left_was_down: false,
+            mouse_right: false,
+            mouse_right_was_down: false,
             shoot_mouse: false,
+            inventory_toggle: false,
+            inventory_click: None,
+            inventory_right_click: None,
             jump_was_down: false,
+            inventory_tab_was_down: false,
             shoot_left_was_down: false,
             shoot_right_was_down: false,
             shoot_up_was_down: false,
@@ -93,6 +105,7 @@ impl WindowInput {
     pub fn clear_keys(&mut self) {
         self.down_keys.clear();
         self.mouse_left = false;
+        self.mouse_right = false;
     }
 
     pub fn on_mouse_move(&mut self, x: f64, y: f64) {
@@ -111,6 +124,12 @@ impl WindowInput {
             }
             (winit::event::MouseButton::Left, winit::event::ElementState::Released) => {
                 self.mouse_left = false;
+            }
+            (winit::event::MouseButton::Right, winit::event::ElementState::Pressed) => {
+                self.mouse_right = true;
+            }
+            (winit::event::MouseButton::Right, winit::event::ElementState::Released) => {
+                self.mouse_right = false;
             }
             _ => {}
         }
@@ -163,6 +182,20 @@ impl WindowInput {
 
         self.shoot_mouse = self.mouse_left && !self.mouse_left_was_down;
         self.mouse_left_was_down = self.mouse_left;
+
+        let now_tab = keys.contains(&KeyCode::Tab);
+        self.inventory_toggle = now_tab && !self.inventory_tab_was_down;
+        self.inventory_tab_was_down = now_tab;
+
+        self.inventory_click = None;
+        self.inventory_right_click = None;
+        if self.mouse_left && !self.mouse_left_was_down {
+            self.inventory_click = Some((self.mouse_x, self.mouse_y));
+        }
+        if self.mouse_right && !self.mouse_right_was_down {
+            self.inventory_right_click = Some((self.mouse_x, self.mouse_y));
+        }
+        self.mouse_right_was_down = self.mouse_right;
 
         self.cam_left = keys.contains(&KeyCode::KeyY);
         self.cam_right = keys.contains(&KeyCode::KeyU);

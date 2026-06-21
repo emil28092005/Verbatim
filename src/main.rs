@@ -304,7 +304,7 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                         game.player.stop_horizontal(&mut game.entities);
                     }
 
-                    if input.shoot_mouse
+                    if (input.shoot_mouse && !game.inventory_open)
                         || input.shoot_left
                         || input.shoot_right
                         || input.shoot_up
@@ -346,6 +346,89 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
                     if input.drop_item {
                         game.drop_item(0);
+                    }
+
+                    if input.inventory_toggle {
+                        game.inventory_open = !game.inventory_open;
+                    }
+
+                    let ui_scale = verbatim::ui::UI_SCALE as f64;
+                    let cell_px = 8.0_f64;
+                    let ui_cell_px = cell_px / ui_scale;
+                    game.inventory_mouse_x = (input.mouse_x / ui_cell_px) as i32;
+                    game.inventory_mouse_y = (input.mouse_y / ui_cell_px) as i32;
+
+                    if game.inventory_open {
+                        if let Some((mx, my)) = &input.inventory_click {
+                            let mouse_ui_x = (*mx / ui_cell_px) as i32;
+                            let mouse_ui_y = (*my / ui_cell_px) as i32;
+                            let vw = renderer.grid_w();
+                            let vh = renderer.grid_h();
+                            let ui_w = (vw as i32) * verbatim::ui::UI_SCALE;
+                            let ui_h = (vh as i32) * verbatim::ui::UI_SCALE;
+
+                            let cols = 4i32;
+                            let rows = 2i32;
+                            let slot_w = 8i32;
+                            let slot_h = 6i32;
+                            let gap = 2i32;
+                            let panel_w = cols * slot_w + (cols + 1) * gap + 4;
+                            let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+                            let px_start = (ui_w - panel_w) / 2;
+                            let py_start = (ui_h - panel_h) / 2;
+
+                            for row in 0..rows {
+                                for col in 0..cols {
+                                    let idx = (row * cols + col) as usize;
+                                    let sx = px_start + gap + col * (slot_w + gap) + 2;
+                                    let sy = py_start + 10 + row * (slot_h + gap) + gap;
+                                    if mouse_ui_x >= sx
+                                        && mouse_ui_x < sx + slot_w
+                                        && mouse_ui_y >= sy
+                                        && mouse_ui_y < sy + slot_h
+                                    {
+                                        if idx < game.player.inventory.len() {
+                                            game.use_item(idx);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some((mx, my)) = &input.inventory_right_click {
+                            let mouse_ui_x = (*mx / ui_cell_px) as i32;
+                            let mouse_ui_y = (*my / ui_cell_px) as i32;
+                            let vw = renderer.grid_w();
+                            let vh = renderer.grid_h();
+                            let ui_w = (vw as i32) * verbatim::ui::UI_SCALE;
+                            let ui_h = (vh as i32) * verbatim::ui::UI_SCALE;
+
+                            let cols = 4i32;
+                            let rows = 2i32;
+                            let slot_w = 8i32;
+                            let slot_h = 6i32;
+                            let gap = 2i32;
+                            let panel_w = cols * slot_w + (cols + 1) * gap + 4;
+                            let panel_h = rows * slot_h + (rows + 1) * gap + 20;
+                            let px_start = (ui_w - panel_w) / 2;
+                            let py_start = (ui_h - panel_h) / 2;
+
+                            for row in 0..rows {
+                                for col in 0..cols {
+                                    let idx = (row * cols + col) as usize;
+                                    let sx = px_start + gap + col * (slot_w + gap) + 2;
+                                    let sy = py_start + 10 + row * (slot_h + gap) + gap;
+                                    if mouse_ui_x >= sx
+                                        && mouse_ui_x < sx + slot_w
+                                        && mouse_ui_y >= sy
+                                        && mouse_ui_y < sy + slot_h
+                                    {
+                                        if idx < game.player.inventory.len() {
+                                            game.drop_item(idx);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     {

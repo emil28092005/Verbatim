@@ -40,6 +40,9 @@ pub struct Game {
     pub score: u32,
     pub depth: u32,
     pub fps: f32,
+    pub inventory_open: bool,
+    pub inventory_mouse_x: i32,
+    pub inventory_mouse_y: i32,
 }
 
 impl Game {
@@ -73,6 +76,9 @@ impl Game {
             score: 0,
             depth: 1,
             fps: 0.0,
+            inventory_open: false,
+            inventory_mouse_x: 0,
+            inventory_mouse_y: 0,
         }
     }
 
@@ -425,8 +431,10 @@ impl Game {
         let player_alive = player.as_ref().map(|e| e.alive).unwrap_or(false);
         let ui_w = (vw as i32) * crate::ui::UI_SCALE;
         let ui_h = (vh as i32) * crate::ui::UI_SCALE;
-        self.ui
-            .draw_character_panel(1, 1, player.as_ref(), &self.player);
+        if !self.inventory_open {
+            self.ui
+                .draw_character_panel(1, 1, player.as_ref(), &self.player);
+        }
         self.ui.draw_hud(
             ui_w as usize,
             ui_h as usize,
@@ -461,6 +469,15 @@ impl Game {
             self.cam_x,
             self.cam_y,
         );
+        if self.inventory_open {
+            self.ui.draw_inventory_overlay(
+                ui_w as usize,
+                ui_h as usize,
+                &self.player,
+                self.inventory_mouse_x,
+                self.inventory_mouse_y,
+            );
+        }
         if !player_alive {
             self.ui
                 .draw_death_screen(ui_w as usize, ui_h as usize, self.kills, self.score);
