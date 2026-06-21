@@ -87,88 +87,133 @@ impl Game {
                 .set_material(x as i32, (h - 2) as i32, MaterialId::Dirt);
         }
 
+        let surface_noise = |x: i32| -> i32 {
+            let base = (h as i32 - 3) - ((x as f32 * 0.08).sin() * 4.0) as i32;
+            let detail = ((x as f32 * 0.23).sin() * 2.0) as i32;
+            (base + detail).max(10).min(h as i32 - 3)
+        };
+
         for x in 0..w {
-            let surface = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
-            let surface = surface.max(10).min(h as i32 - 3);
+            let surface = surface_noise(x as i32);
+            let biome = x / (w / 4);
+
             for y in surface..(h as i32 - 2) {
                 if y == surface {
-                    self.grid.set_material(x as i32, y, MaterialId::Grass);
+                    let mat = match biome {
+                        0 => MaterialId::Grass,
+                        1 => MaterialId::Grass,
+                        2 => MaterialId::Dirt,
+                        _ => MaterialId::Stone,
+                    };
+                    self.grid.set_material(x as i32, y, mat);
+                } else if y > surface + 8 {
+                    self.grid.set_material(x as i32, y, MaterialId::Stone);
                 } else {
                     self.grid.set_material(x as i32, y, MaterialId::Dirt);
                 }
             }
         }
 
-        // Water pool (left side)
+        for _ in 0..8 {
+            let cave_x = (self.ca.random_u32() % (w as u32 - 20) + 10) as i32;
+            let cave_y = (self.ca.random_u32() % (h as u32 / 3) + (h as u32 / 3) * 2) as i32;
+            let cave_r = (self.ca.random_u32() % 4 + 3) as i32;
+            for dy in -cave_r..=cave_r {
+                for dx in -cave_r..=cave_r {
+                    if dx * dx + dy * dy <= cave_r * cave_r {
+                        let cx = cave_x + dx;
+                        let cy = cave_y + dy;
+                        if cx > 1 && cx < w as i32 - 2 && cy > 1 && cy < h as i32 - 2 {
+                            self.grid.set(cx, cy, crate::world::cell::Cell::empty());
+                        }
+                    }
+                }
+            }
+        }
+
+        for tree_x in [60, 75, 130, 145, 220] {
+            let s = surface_noise(tree_x);
+            for y in (s - 6)..s {
+                if y > 5 {
+                    self.grid.set_material(tree_x, y, MaterialId::Wood);
+                }
+            }
+            for dy in -2..=0 {
+                for dx in -2..=2 {
+                    if dx * dx + dy * dy <= 5 {
+                        let cx = tree_x + dx;
+                        let cy = s - 6 + dy;
+                        if cx > 1 && cx < w as i32 - 2 && cy > 1 {
+                            if self.grid.get(cx, cy).is_empty() {
+                                self.grid.set_material(cx, cy, MaterialId::Grass);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let water_x = 40;
-        for x in water_x - 12..=water_x + 12 {
-            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
-            let s = s.max(10).min(h as i32 - 3);
-            for y in s - 8..s {
-                if self.grid.get(x as i32, y).is_empty() {
-                    self.grid.set_material(x as i32, y, MaterialId::Water);
+        for x in water_x - 10..=water_x + 10 {
+            let s = surface_noise(x);
+            for y in s - 6..s {
+                if self.grid.get(x, y).is_empty() {
+                    self.grid.set_material(x, y, MaterialId::Water);
                 }
             }
         }
 
-        // Lava pool (right side)
         let lava_x = 200;
-        for x in lava_x - 10..=lava_x + 10 {
-            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
-            let s = s.max(10).min(h as i32 - 3);
-            for y in s - 5..s {
-                if self.grid.get(x as i32, y).is_empty() {
-                    self.grid.set_material(x as i32, y, MaterialId::Lava);
+        for x in lava_x - 8..=lava_x + 8 {
+            let s = surface_noise(x);
+            for y in s - 4..s {
+                if self.grid.get(x, y).is_empty() {
+                    self.grid.set_material(x, y, MaterialId::Lava);
                 }
             }
         }
 
-        // Wood structure near center-left
-        let wood_x = 90;
-        let wood_surface = (h as i32 - 3) - ((wood_x as f32 * 0.1).sin() * 5.0) as i32;
-        let wood_surface = wood_surface.max(10).min(h as i32 - 3);
-        for y in wood_surface - 8..wood_surface {
-            self.grid.set_material(wood_x, y, MaterialId::Wood);
-            self.grid.set_material(wood_x + 4, y, MaterialId::Wood);
-        }
-        for x in wood_x..=wood_x + 4 {
-            self.grid
-                .set_material(x, wood_surface - 8, MaterialId::Wood);
-        }
-
-        // Sand dune (right of center)
         let sand_x = 160;
-        let sand_surface = (h as i32 - 3) - ((sand_x as f32 * 0.1).sin() * 5.0) as i32;
-        let sand_surface = sand_surface.max(10).min(h as i32 - 3);
-        for dx in -8..=8 {
-            let pile_h = (8.0 - (dx as f32).abs()) as i32;
+        for dx in -10..=10 {
+            let s = surface_noise(sand_x + dx);
+            let pile_h = (10.0 - (dx as f32).abs() * 0.8) as i32;
             for dy in 0..pile_h {
-                let y = sand_surface - 1 - dy;
-                if self.grid.get(sand_x + dx, y).is_empty() {
+                let y = s - 1 - dy;
+                if y > 5 && self.grid.get(sand_x + dx, y).is_empty() {
                     self.grid.set_material(sand_x + dx, y, MaterialId::Sand);
                 }
             }
         }
 
-        // Acid pool (far left)
-        let acid_x = 15;
-        for x in acid_x - 5..=acid_x + 5 {
-            let s = (h as i32 - 3) - ((x as f32 * 0.1).sin() * 5.0) as i32;
-            let s = s.max(10).min(h as i32 - 3);
-            for y in s - 4..s {
-                if self.grid.get(x as i32, y).is_empty() {
-                    self.grid.set_material(x as i32, y, MaterialId::Acid);
+        let acid_x = 20;
+        for x in acid_x - 4..=acid_x + 4 {
+            let s = surface_noise(x);
+            for y in s - 3..s {
+                if self.grid.get(x, y).is_empty() {
+                    self.grid.set_material(x, y, MaterialId::Acid);
                 }
             }
         }
 
-        // Stone wall obstacle (between player and water)
         let wall_x = 110;
-        let wall_surface = (h as i32 - 3) - ((wall_x as f32 * 0.1).sin() * 5.0) as i32;
-        let wall_surface = wall_surface.max(10).min(h as i32 - 3);
-        for y in wall_surface - 6..wall_surface {
+        let wall_s = surface_noise(wall_x);
+        for y in (wall_s - 5)..wall_s {
             self.grid.set_material(wall_x, y, MaterialId::Stone);
             self.grid.set_material(wall_x + 1, y, MaterialId::Stone);
+        }
+
+        for _ in 0..6 {
+            let px = (self.ca.random_u32() % (w as u32 - 20) + 10) as i32;
+            let py = (self.ca.random_u32() % (h as u32 / 3) + (h as u32 / 3) * 2) as i32;
+            for dy in 0..8 {
+                for dx in -1..=1 {
+                    let cx = px + dx;
+                    let cy = py + dy;
+                    if cx > 1 && cx < w as i32 - 2 && cy < h as i32 - 3 {
+                        self.grid.set_material(cx, cy, MaterialId::Stone);
+                    }
+                }
+            }
         }
 
         self.grid.fill_border(MaterialId::Stone);
@@ -653,16 +698,17 @@ impl Game {
 
     fn update_goblin_ai(&mut self) {
         let (px, py) = self.player.center(&self.entities);
-        let goblin_data: Vec<(usize, f32, f32, f32)> = self
+        let tick = self.tick;
+        let goblin_data: Vec<(usize, f32, f32, f32, u32)> = self
             .entities
             .all()
             .iter()
             .enumerate()
             .filter(|(_, e)| e.alive && e.kind == EntityKind::Goblin)
-            .map(|(i, e)| (i, e.cx, e.cy, e.health))
+            .map(|(i, e)| (i, e.cx, e.cy, e.health, e.id))
             .collect();
 
-        for (idx, gx, gy, health) in goblin_data {
+        for (idx, gx, gy, health, goblin_id) in goblin_data {
             if !self.entities.all()[idx].rigid {
                 continue;
             }
@@ -674,7 +720,14 @@ impl Game {
                 continue;
             }
             let dir_x = dx / dist;
-            let _dir_y = dy / dist;
+
+            if dist > 20.0 && dist < 60.0 && tick % 80 == 0 {
+                let vx = dir_x * 1.2;
+                let vy = (dy / dist) * 0.8;
+                self.projectiles
+                    .spawn_arrow(gx, gy - 2.0, vx, vy, goblin_id);
+            }
+
             if health < 10.0 {
                 let flee = self.entities.all()[idx].cx < px;
                 let move_dir = if flee { -1.0 } else { 1.0 };

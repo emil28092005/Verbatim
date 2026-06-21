@@ -222,6 +222,10 @@ impl ProjectileManager {
         id
     }
 
+    pub fn spawn_arrow(&mut self, x: f32, y: f32, vx: f32, vy: f32, owner: EntityId) -> u32 {
+        self.spawn(ProjectileType::Arrow, x, y, vx, vy, owner, 0.0)
+    }
+
     pub fn update(&mut self, grid: &Grid) {
         for p in &mut self.projectiles {
             p.update(grid);
