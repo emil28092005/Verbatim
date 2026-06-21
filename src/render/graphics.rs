@@ -800,9 +800,13 @@ impl GraphicsRenderer {
         for item in items.all() {
             let sx = item.x - cam_x;
             let sy = item.y - cam_y;
-            if sx >= 0 && sx < self.grid_w as i32 && sy >= 0 && sy < self.grid_h as i32 {
-                let idx = sy as usize * self.grid_w + sx as usize;
-                item_color[idx] = [item.color()[0], item.color()[1], item.color()[2], 255];
+            for (dx, dy, col) in item.shape() {
+                let px = sx + dx;
+                let py = sy + dy;
+                if px >= 0 && px < self.grid_w as i32 && py >= 0 && py < self.grid_h as i32 {
+                    let idx = py as usize * self.grid_w + px as usize;
+                    item_color[idx] = [col[0], col[1], col[2], 255];
+                }
             }
         }
         for e in entities.all() {
