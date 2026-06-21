@@ -1,0 +1,292 @@
+{
+  "/home/emil/Desktop/Verbatim/scenarios/acid_dissolves_wood.json": {
+    "mtime": 1781970764.6442819,
+    "ast_hash": "8d56cc1848be6548decbe1e329491b4e",
+    "semantic_hash": "8d56cc1848be6548decbe1e329491b4e"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/acid_eats_through_wall.json": {
+    "mtime": 1781984503.8460147,
+    "ast_hash": "2beb1ff35d7487a83fab52c75904d73e",
+    "semantic_hash": "2beb1ff35d7487a83fab52c75904d73e"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/entity_burns_in_lava.json": {
+    "mtime": 1781970726.5528774,
+    "ast_hash": "75f62c9cf20a5c144f6f389d7b1d5f5a",
+    "semantic_hash": "75f62c9cf20a5c144f6f389d7b1d5f5a"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/entity_survives_fall.json": {
+    "mtime": 1781983490.8671792,
+    "ast_hash": "4cc7a6f511896c0c5a1ab614d899fa2d",
+    "semantic_hash": "4cc7a6f511896c0c5a1ab614d899fa2d"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/fire_chain_wood.json": {
+    "mtime": 1781983468.9059443,
+    "ast_hash": "14b91384dff483d49dddc9d99b5041a4",
+    "semantic_hash": "14b91384dff483d49dddc9d99b5041a4"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/fire_spreads_through_grass.json": {
+    "mtime": 1781970725.561867,
+    "ast_hash": "a6f1b65d9a660266fd81ab4c0570fa15",
+    "semantic_hash": "a6f1b65d9a660266fd81ab4c0570fa15"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/lava_ignites_wood.json": {
+    "mtime": 1781970722.357833,
+    "ast_hash": "3c3975c955f54dc092000d2b8cbab980",
+    "semantic_hash": "3c3975c955f54dc092000d2b8cbab980"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/lava_plus_water_makes_steam.json": {
+    "mtime": 1781984425.8851807,
+    "ast_hash": "9deb9ec56c2d0f581874aa9d51be1438",
+    "semantic_hash": "9deb9ec56c2d0f581874aa9d51be1438"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/lava_pool_interaction.json": {
+    "mtime": 1781984476.6377237,
+    "ast_hash": "cab0da83d6903a07ae1054e710f9d108",
+    "semantic_hash": "cab0da83d6903a07ae1054e710f9d108"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/player_falls_and_lands.json": {
+    "mtime": 1781970725.561867,
+    "ast_hash": "c4264a79dea6301828ba05a892ea513e",
+    "semantic_hash": "c4264a79dea6301828ba05a892ea513e"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/sand_buries_wood.json": {
+    "mtime": 1781983484.682113,
+    "ast_hash": "1220b84d088ec7a35777416ffcb7ad16",
+    "semantic_hash": "1220b84d088ec7a35777416ffcb7ad16"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/sand_falls_down.json": {
+    "mtime": 1781970712.2597258,
+    "ast_hash": "30baf2c5ef87bc287a16e99eb6bad98f",
+    "semantic_hash": "30baf2c5ef87bc287a16e99eb6bad98f"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/steam_condenses.json": {
+    "mtime": 1781983498.8702648,
+    "ast_hash": "e59d6d0f5c9688bc0fcf88b63882d7f0",
+    "semantic_hash": "e59d6d0f5c9688bc0fcf88b63882d7f0"
+  },
+  "/home/emil/Desktop/Verbatim/scenarios/water_flows_sideways.json": {
+    "mtime": 1781970716.227768,
+    "ast_hash": "2aed38e5196f3331f69f7b2c8272fe9d",
+    "semantic_hash": "2aed38e5196f3331f69f7b2c8272fe9d"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/action.rs": {
+    "mtime": 1781982011.0213413,
+    "ast_hash": "c514af97d56e023db3e14776cebd742b",
+    "semantic_hash": "c514af97d56e023db3e14776cebd742b"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/mod.rs": {
+    "mtime": 1781970069.3378994,
+    "ast_hash": "37cfd173334195bb77ce77032e734475",
+    "semantic_hash": "37cfd173334195bb77ce77032e734475"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/protocol.rs": {
+    "mtime": 1781982011.0213413,
+    "ast_hash": "35c87a0bc8eea05d7973c0646723f26e",
+    "semantic_hash": "35c87a0bc8eea05d7973c0646723f26e"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/replay.rs": {
+    "mtime": 1781994698.517593,
+    "ast_hash": "bb610684494750685093b6745cbd3c95",
+    "semantic_hash": "bb610684494750685093b6745cbd3c95"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/scenario.rs": {
+    "mtime": 1781982011.0213413,
+    "ast_hash": "1ed4faf1ab6157642642e77372821df2",
+    "semantic_hash": "1ed4faf1ab6157642642e77372821df2"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/session.rs": {
+    "mtime": 1781994682.1954203,
+    "ast_hash": "299982f384ea4ee845e16462aa5c55ce",
+    "semantic_hash": "299982f384ea4ee845e16462aa5c55ce"
+  },
+  "/home/emil/Desktop/Verbatim/src/ai/state.rs": {
+    "mtime": 1781994883.4095483,
+    "ast_hash": "5b25a5fffc6be4182745780e04e40614",
+    "semantic_hash": "5b25a5fffc6be4182745780e04e40614"
+  },
+  "/home/emil/Desktop/Verbatim/src/entity/entity.rs": {
+    "mtime": 1781994535.1578653,
+    "ast_hash": "dc597c2796cd69c6703d50be701ce9f0",
+    "semantic_hash": "dc597c2796cd69c6703d50be701ce9f0"
+  },
+  "/home/emil/Desktop/Verbatim/src/entity/mod.rs": {
+    "mtime": 1781994733.5389633,
+    "ast_hash": "d720a8686f72b3f739a71acb1db16f18",
+    "semantic_hash": "d720a8686f72b3f739a71acb1db16f18"
+  },
+  "/home/emil/Desktop/Verbatim/src/entity/player.rs": {
+    "mtime": 1781994571.4262488,
+    "ast_hash": "ddfd3ca0846c649df864ae44ff1dc64c",
+    "semantic_hash": "ddfd3ca0846c649df864ae44ff1dc64c"
+  },
+  "/home/emil/Desktop/Verbatim/src/game.rs": {
+    "mtime": 1781994816.6048417,
+    "ast_hash": "7148e19d75808d22d6581639a8d5c311",
+    "semantic_hash": "7148e19d75808d22d6581639a8d5c311"
+  },
+  "/home/emil/Desktop/Verbatim/src/input.rs": {
+    "mtime": 1781994775.8534107,
+    "ast_hash": "70ec1ff16bf13b3649f27bea9a3891c8",
+    "semantic_hash": "70ec1ff16bf13b3649f27bea9a3891c8"
+  },
+  "/home/emil/Desktop/Verbatim/src/lib.rs": {
+    "mtime": 1781970270.862039,
+    "ast_hash": "abe33261862db85f4f4007a98efe1720",
+    "semantic_hash": "abe33261862db85f4f4007a98efe1720"
+  },
+  "/home/emil/Desktop/Verbatim/src/main.rs": {
+    "mtime": 1781994426.1417122,
+    "ast_hash": "f8186418f5cfccdc11af1976c10d994f",
+    "semantic_hash": "f8186418f5cfccdc11af1976c10d994f"
+  },
+  "/home/emil/Desktop/Verbatim/src/physics/collision.rs": {
+    "mtime": 1781969161.8692644,
+    "ast_hash": "bb0015e3335e47d8b25f3fa0a25a9afa",
+    "semantic_hash": "bb0015e3335e47d8b25f3fa0a25a9afa"
+  },
+  "/home/emil/Desktop/Verbatim/src/physics/mod.rs": {
+    "mtime": 1781994728.4279091,
+    "ast_hash": "b6cfc7b3d47ddf5dfe4b55385b1aeb0e",
+    "semantic_hash": "b6cfc7b3d47ddf5dfe4b55385b1aeb0e"
+  },
+  "/home/emil/Desktop/Verbatim/src/physics/verlet.rs": {
+    "mtime": 1781994612.3436816,
+    "ast_hash": "cdb55409206655f6826201b3a25d859f",
+    "semantic_hash": "cdb55409206655f6826201b3a25d859f"
+  },
+  "/home/emil/Desktop/Verbatim/src/render/graphics.rs": {
+    "mtime": 1781994837.8480663,
+    "ast_hash": "c0f8cc8af597d07af099e307622b4f2b",
+    "semantic_hash": "c0f8cc8af597d07af099e307622b4f2b"
+  },
+  "/home/emil/Desktop/Verbatim/src/render/mod.rs": {
+    "mtime": 1781992655.9960363,
+    "ast_hash": "1390b4f260548f51898abeaefa44c0d7",
+    "semantic_hash": "1390b4f260548f51898abeaefa44c0d7"
+  },
+  "/home/emil/Desktop/Verbatim/src/render/terminal.rs": {
+    "mtime": 1781994877.423485,
+    "ast_hash": "e9eb6b706e04619794e5567b7ae71425",
+    "semantic_hash": "e9eb6b706e04619794e5567b7ae71425"
+  },
+  "/home/emil/Desktop/Verbatim/src/render/vulkan.rs": {
+    "mtime": 1781994804.0007086,
+    "ast_hash": "d94730a5b91d78bb5271b7d18123fb5f",
+    "semantic_hash": "d94730a5b91d78bb5271b7d18123fb5f"
+  },
+  "/home/emil/Desktop/Verbatim/src/render/window_input.rs": {
+    "mtime": 1781994633.7179077,
+    "ast_hash": "e8d2a0128959ce134a3e440e7fdef8cf",
+    "semantic_hash": "e8d2a0128959ce134a3e440e7fdef8cf"
+  },
+  "/home/emil/Desktop/Verbatim/src/world/cell.rs": {
+    "mtime": 1781994439.0328486,
+    "ast_hash": "65f721a9878492ed06b059d605630c88",
+    "semantic_hash": "65f721a9878492ed06b059d605630c88"
+  },
+  "/home/emil/Desktop/Verbatim/src/world/cellular.rs": {
+    "mtime": 1781994620.518768,
+    "ast_hash": "4299c4f6dffd685c4cff62d6da00962f",
+    "semantic_hash": "4299c4f6dffd685c4cff62d6da00962f"
+  },
+  "/home/emil/Desktop/Verbatim/src/world/grid.rs": {
+    "mtime": 1781994901.0097344,
+    "ast_hash": "7e28468cb7d0e44dd95c663c45b523b3",
+    "semantic_hash": "7e28468cb7d0e44dd95c663c45b523b3"
+  },
+  "/home/emil/Desktop/Verbatim/src/world/material.rs": {
+    "mtime": 1781994717.9467983,
+    "ast_hash": "7f70daf6658c7240dc576ca875dbdad0",
+    "semantic_hash": "7f70daf6658c7240dc576ca875dbdad0"
+  },
+  "/home/emil/Desktop/Verbatim/src/world/mod.rs": {
+    "mtime": 1781994722.7638493,
+    "ast_hash": "72a8eea3bfe44a1ff11a4c69709d414e",
+    "semantic_hash": "72a8eea3bfe44a1ff11a4c69709d414e"
+  },
+  "/home/emil/Desktop/Verbatim/tests/collision_robust.rs": {
+    "mtime": 1781984005.8506877,
+    "ast_hash": "aa42931beb7fc8c329f8ac1041a3c6dd",
+    "semantic_hash": "aa42931beb7fc8c329f8ac1041a3c6dd"
+  },
+  "/home/emil/Desktop/Verbatim/tests/determinism.rs": {
+    "mtime": 1781983582.462159,
+    "ast_hash": "22197294f9d488ea47da4c528d2748f5",
+    "semantic_hash": "22197294f9d488ea47da4c528d2748f5"
+  },
+  "/home/emil/Desktop/Verbatim/tests/edge_cases.rs": {
+    "mtime": 1781994760.8232517,
+    "ast_hash": "161c3c3c243335166e3bbb568b2c74a4",
+    "semantic_hash": "161c3c3c243335166e3bbb568b2c74a4"
+  },
+  "/home/emil/Desktop/Verbatim/tests/entity_damage.rs": {
+    "mtime": 1781980721.7435043,
+    "ast_hash": "2deee58dcc1b6b44e8d25a48c0fc5897",
+    "semantic_hash": "2deee58dcc1b6b44e8d25a48c0fc5897"
+  },
+  "/home/emil/Desktop/Verbatim/tests/entity_movement.rs": {
+    "mtime": 1781981346.368212,
+    "ast_hash": "049056e445056bf6c4b0e2a70c187fb1",
+    "semantic_hash": "049056e445056bf6c4b0e2a70c187fb1"
+  },
+  "/home/emil/Desktop/Verbatim/tests/integration.rs": {
+    "mtime": 1781983295.271087,
+    "ast_hash": "8db0aae4fbd95fb1effd18bb8560f953",
+    "semantic_hash": "8db0aae4fbd95fb1effd18bb8560f953"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_acid.rs": {
+    "mtime": 1781970221.685517,
+    "ast_hash": "e6034490a9607deeadce03505cadf731",
+    "semantic_hash": "e6034490a9607deeadce03505cadf731"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_interactions.rs": {
+    "mtime": 1781983882.030363,
+    "ast_hash": "38b73ebc6c62cfefb20506db6dd1072d",
+    "semantic_hash": "38b73ebc6c62cfefb20506db6dd1072d"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_lava.rs": {
+    "mtime": 1781980754.4328554,
+    "ast_hash": "c31c44a9f63bf8b6f1df51737f1a2de9",
+    "semantic_hash": "c31c44a9f63bf8b6f1df51737f1a2de9"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_materials.rs": {
+    "mtime": 1781983693.2113435,
+    "ast_hash": "ef6d9d77564f4c02745639ec5807d7db",
+    "semantic_hash": "ef6d9d77564f4c02745639ec5807d7db"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_sand.rs": {
+    "mtime": 1781983289.756028,
+    "ast_hash": "4b799fe61ebaa00d14c570d9284a37ec",
+    "semantic_hash": "4b799fe61ebaa00d14c570d9284a37ec"
+  },
+  "/home/emil/Desktop/Verbatim/tests/physics_water.rs": {
+    "mtime": 1781970629.040842,
+    "ast_hash": "a7141937d2e90d6cc16a6afef026bb1e",
+    "semantic_hash": "a7141937d2e90d6cc16a6afef026bb1e"
+  },
+  "/home/emil/Desktop/Verbatim/tests/player_controls.rs": {
+    "mtime": 1781984330.918165,
+    "ast_hash": "da75dda146361ea0e23ebd11f554fdba",
+    "semantic_hash": "da75dda146361ea0e23ebd11f554fdba"
+  },
+  "/home/emil/Desktop/Verbatim/tests/ragdoll_death.rs": {
+    "mtime": 1781994739.1590228,
+    "ast_hash": "c4dfb537ecc663fbb2444de321e05385",
+    "semantic_hash": "c4dfb537ecc663fbb2444de321e05385"
+  },
+  "/home/emil/Desktop/Verbatim/AGENTS.md": {
+    "mtime": 1781995334.9053233,
+    "ast_hash": "c301fc82f1fa9473c0354454b9b5ad55",
+    "semantic_hash": "c301fc82f1fa9473c0354454b9b5ad55"
+  },
+  "/home/emil/Desktop/Verbatim/PLAN.md": {
+    "mtime": 1781995156.2924342,
+    "ast_hash": "cb55659d25cbbb523394cc0c383bff5a",
+    "semantic_hash": "cb55659d25cbbb523394cc0c383bff5a"
+  },
+  "/home/emil/Desktop/Verbatim/headless_dump.txt": {
+    "mtime": 1781989911.9880815,
+    "ast_hash": "1ab2647a155a1eed5d05b7292a29b63e",
+    "semantic_hash": "1ab2647a155a1eed5d05b7292a29b63e"
+  }
+}
