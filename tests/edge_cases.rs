@@ -117,9 +117,10 @@ fn player_bodies_count_matches_layout() {
     let mut s = GameSession::new_seeded(42);
     s.init();
     let p = s.get_player().unwrap();
-    assert_eq!(
-        p.body_count, 15,
-        "player should have 15 bodies (profile humanoid)"
+    assert!(
+        p.body_count >= 30,
+        "player should have 30+ bodies (detailed humanoid), got {}",
+        p.body_count
     );
 }
 

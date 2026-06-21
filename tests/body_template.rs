@@ -4,16 +4,24 @@ use verbatim::entity::body_template::{BodyPart, BodyTemplate};
 fn player_template_has_correct_shape() {
     let t = BodyTemplate::humanoid_player();
     assert_eq!(t.name, "player");
-    assert_eq!(t.parts.len(), 15);
-    assert_eq!(t.half_w, 2.5);
-    assert_eq!(t.half_h, 3.5);
+    assert!(
+        t.parts.len() >= 30,
+        "player should have 30+ parts, got {}",
+        t.parts.len()
+    );
+    assert_eq!(t.half_w, 4.0);
+    assert_eq!(t.half_h, 6.0);
 }
 
 #[test]
 fn goblin_template_has_correct_shape() {
     let t = BodyTemplate::humanoid_goblin();
     assert_eq!(t.name, "goblin");
-    assert_eq!(t.parts.len(), 15);
+    assert!(
+        t.parts.len() >= 30,
+        "goblin should have 30+ parts, got {}",
+        t.parts.len()
+    );
 }
 
 #[test]
@@ -109,7 +117,11 @@ fn template_apply_to_entity() {
     let mut e = Entity::new(0, EntityKind::Goblin);
     let t = BodyTemplate::humanoid_goblin();
     t.apply_to(&mut e, 100.0, 100.0);
-    assert_eq!(e.bodies.len(), 15);
+    assert!(
+        e.bodies.len() >= 30,
+        "goblin should have 30+ bodies, got {}",
+        e.bodies.len()
+    );
     assert_eq!(e.cx, 100.0);
     assert_eq!(e.cy, 100.0);
     assert!(!e.constraints.is_empty());

@@ -3,6 +3,17 @@ use crate::physics::verlet::SubBody;
 use crate::world::cell::MaterialId;
 use serde::{Deserialize, Serialize};
 
+macro_rules! p {
+    ($x:expr, $y:expr, $r:expr, $g:expr, $b:expr, $label:expr) => {
+        BodyPart {
+            x: $x as f32,
+            y: $y as f32,
+            color: [$r, $g, $b, 255],
+            label: $label.into(),
+        }
+    };
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BodyPart {
     pub x: f32,
@@ -23,370 +34,182 @@ pub struct BodyTemplate {
 
 impl BodyTemplate {
     pub fn humanoid_player() -> Self {
+        let parts = vec![
+            // Head: 3x2 = 6
+            p!(-1, -5, 215, 190, 240, "head"),
+            p!(0, -5, 225, 205, 245, "head"),
+            p!(1, -5, 215, 190, 240, "head"),
+            p!(-1, -4, 215, 190, 240, "head"),
+            p!(0, -4, 225, 205, 245, "head"),
+            p!(1, -4, 215, 190, 240, "head"),
+            // Hat brim: 5 wide
+            p!(-2, -4, 80, 50, 130, "hat"),
+            p!(2, -4, 80, 50, 130, "hat"),
+            // Hat top: 3
+            p!(-1, -6, 90, 55, 140, "hat"),
+            p!(0, -6, 100, 60, 150, "hat"),
+            p!(1, -6, 90, 55, 140, "hat"),
+            // Neck + shoulders: belt accent
+            p!(0, -3, 230, 190, 110, "belt"),
+            p!(-1, -3, 150, 90, 210, "shirt"),
+            p!(1, -3, 150, 90, 210, "shirt"),
+            // Arms out: hands
+            p!(-2, -3, 205, 180, 235, "hand"),
+            p!(2, -3, 205, 180, 235, "hand"),
+            p!(-3, -3, 195, 170, 225, "hand"),
+            p!(3, -3, 195, 170, 225, "hand"),
+            // Torso: 3 wide x 2
+            p!(-1, -2, 150, 90, 210, "shirt"),
+            p!(0, -2, 160, 100, 220, "shirt"),
+            p!(1, -2, 150, 90, 210, "shirt"),
+            p!(-1, -1, 150, 90, 210, "shirt"),
+            p!(0, -1, 160, 100, 220, "shirt"),
+            p!(1, -1, 150, 90, 210, "shirt"),
+            // Arms lower
+            p!(-2, -2, 210, 185, 240, "hand"),
+            p!(2, -2, 210, 185, 240, "hand"),
+            p!(-2, -1, 200, 170, 230, "hand"),
+            p!(2, -1, 200, 170, 230, "hand"),
+            // Belt
+            p!(-1, 0, 230, 190, 110, "belt"),
+            p!(0, 0, 240, 200, 120, "belt"),
+            p!(1, 0, 230, 190, 110, "belt"),
+            // Hips: 3 wide
+            p!(-1, 1, 95, 55, 155, "pants"),
+            p!(0, 1, 95, 55, 155, "pants"),
+            p!(1, 1, 95, 55, 155, "pants"),
+            // Upper legs: 3 wide
+            p!(-1, 2, 85, 45, 145, "pants"),
+            p!(0, 2, 85, 45, 145, "pants"),
+            p!(1, 2, 85, 45, 145, "pants"),
+            p!(-2, 2, 85, 45, 145, "pants"),
+            p!(2, 2, 85, 45, 145, "pants"),
+            // Lower legs: split
+            p!(-2, 3, 75, 40, 125, "pants"),
+            p!(0, 3, 75, 40, 125, "pants"),
+            p!(2, 3, 75, 40, 125, "pants"),
+            // Boots
+            p!(-2, 4, 55, 30, 95, "boots"),
+            p!(0, 4, 55, 30, 95, "boots"),
+            p!(2, 4, 55, 30, 95, "boots"),
+            p!(-2, 5, 45, 25, 80, "boots"),
+            p!(2, 5, 45, 25, 80, "boots"),
+        ];
+
+        let n = parts.len();
         Self {
             name: "player".to_string(),
-            half_w: 2.5,
-            half_h: 3.5,
+            half_w: 4.0,
+            half_h: 6.0,
             radius: 0.5,
-            parts: vec![
-                BodyPart {
-                    x: 0.0,
-                    y: -3.0,
-                    color: [220, 200, 240, 255],
-                    label: "head".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -2.0,
-                    color: [220, 200, 240, 255],
-                    label: "head".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -1.0,
-                    color: [140, 80, 200, 255],
-                    label: "shirt".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: -1.0,
-                    color: [210, 185, 235, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: -1.0,
-                    color: [210, 185, 235, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 0.0,
-                    color: [140, 80, 200, 255],
-                    label: "shirt".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 0.0,
-                    color: [210, 185, 235, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 0.0,
-                    color: [210, 185, 235, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 1.0,
-                    color: [90, 50, 150, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 2.0,
-                    color: [90, 50, 150, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 2.0,
-                    color: [90, 50, 150, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 2.0,
-                    color: [90, 50, 150, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 3.0,
-                    color: [60, 35, 100, 255],
-                    label: "boots".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 3.0,
-                    color: [60, 35, 100, 255],
-                    label: "boots".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 3.0,
-                    color: [60, 35, 100, 255],
-                    label: "boots".into(),
-                },
-            ],
-            constraints: vec![
-                (0, 1),
-                (1, 2),
-                (2, 5),
-                (5, 8),
-                (2, 3),
-                (2, 4),
-                (5, 6),
-                (5, 7),
-                (8, 11),
-                (11, 9),
-                (11, 10),
-                (9, 12),
-                (10, 14),
-                (11, 13),
-            ],
+            parts,
+            constraints: Self::auto_constraints(n),
         }
     }
 
     pub fn humanoid_goblin() -> Self {
+        let parts = vec![
+            // Head: 3x2
+            p!(-1, -5, 120, 200, 95, "head"),
+            p!(0, -5, 130, 210, 100, "head"),
+            p!(1, -5, 120, 200, 95, "head"),
+            p!(-1, -4, 120, 200, 95, "head"),
+            p!(0, -4, 130, 210, 100, "head"),
+            p!(1, -4, 120, 200, 95, "head"),
+            // Ears
+            p!(-2, -4, 110, 190, 85, "head"),
+            p!(2, -4, 110, 190, 85, "head"),
+            // Neck
+            p!(0, -3, 100, 180, 75, "skin"),
+            // Shoulders: rags
+            p!(-1, -3, 55, 130, 45, "shirt"),
+            p!(1, -3, 55, 130, 45, "shirt"),
+            p!(-2, -3, 110, 180, 85, "hand"),
+            p!(2, -3, 110, 180, 85, "hand"),
+            p!(-3, -3, 100, 170, 75, "hand"),
+            p!(3, -3, 100, 170, 75, "hand"),
+            // Torso: rags 3x2
+            p!(-1, -2, 55, 130, 45, "shirt"),
+            p!(0, -2, 65, 140, 50, "shirt"),
+            p!(1, -2, 55, 130, 45, "shirt"),
+            p!(-1, -1, 50, 120, 40, "shirt"),
+            p!(0, -1, 60, 130, 45, "shirt"),
+            p!(1, -1, 50, 120, 40, "shirt"),
+            // Arms lower
+            p!(-2, -2, 110, 180, 85, "hand"),
+            p!(2, -2, 110, 180, 85, "hand"),
+            p!(-2, -1, 100, 170, 75, "hand"),
+            p!(2, -1, 100, 170, 75, "hand"),
+            // Loincloth
+            p!(-1, 0, 40, 90, 30, "pants"),
+            p!(0, 0, 45, 100, 32, "pants"),
+            p!(1, 0, 40, 90, 30, "pants"),
+            // Legs
+            p!(-1, 1, 40, 100, 30, "pants"),
+            p!(0, 1, 40, 100, 30, "pants"),
+            p!(1, 1, 40, 100, 30, "pants"),
+            p!(-1, 2, 35, 85, 25, "pants"),
+            p!(1, 2, 35, 85, 25, "pants"),
+            p!(-2, 2, 35, 85, 25, "pants"),
+            p!(2, 2, 35, 85, 25, "pants"),
+            // Bare feet
+            p!(-2, 3, 110, 180, 85, "skin"),
+            p!(0, 3, 110, 180, 85, "skin"),
+            p!(2, 3, 110, 180, 85, "skin"),
+            p!(-2, 4, 100, 170, 75, "skin"),
+            p!(2, 4, 100, 170, 75, "skin"),
+        ];
+
+        let n = parts.len();
         Self {
             name: "goblin".to_string(),
-            half_w: 2.5,
-            half_h: 3.5,
+            half_w: 4.0,
+            half_h: 6.0,
             radius: 0.5,
-            parts: vec![
-                BodyPart {
-                    x: 0.0,
-                    y: -3.0,
-                    color: [130, 210, 100, 255],
-                    label: "head".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -2.0,
-                    color: [130, 210, 100, 255],
-                    label: "head".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -1.0,
-                    color: [55, 130, 45, 255],
-                    label: "shirt".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: -1.0,
-                    color: [110, 180, 85, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: -1.0,
-                    color: [110, 180, 85, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 0.0,
-                    color: [55, 130, 45, 255],
-                    label: "shirt".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 0.0,
-                    color: [110, 180, 85, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 0.0,
-                    color: [110, 180, 85, 255],
-                    label: "hand".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 1.0,
-                    color: [40, 100, 30, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 2.0,
-                    color: [40, 100, 30, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 2.0,
-                    color: [40, 100, 30, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 2.0,
-                    color: [40, 100, 30, 255],
-                    label: "pants".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 3.0,
-                    color: [25, 70, 18, 255],
-                    label: "boots".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 3.0,
-                    color: [25, 70, 18, 255],
-                    label: "boots".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 3.0,
-                    color: [25, 70, 18, 255],
-                    label: "boots".into(),
-                },
-            ],
-            constraints: vec![
-                (0, 1),
-                (1, 2),
-                (2, 5),
-                (5, 8),
-                (2, 3),
-                (2, 4),
-                (5, 6),
-                (5, 7),
-                (8, 11),
-                (11, 9),
-                (11, 10),
-                (9, 12),
-                (10, 14),
-                (11, 13),
-            ],
+            parts,
+            constraints: Self::auto_constraints(n),
         }
     }
 
     pub fn boulder() -> Self {
+        let parts = vec![
+            p!(-1, -2, 100, 100, 110, "rock"),
+            p!(0, -2, 115, 115, 125, "rock"),
+            p!(1, -2, 100, 100, 110, "rock"),
+            p!(-2, -1, 105, 105, 115, "rock"),
+            p!(-1, -1, 120, 120, 130, "rock"),
+            p!(0, -1, 125, 125, 135, "rock"),
+            p!(1, -1, 120, 120, 130, "rock"),
+            p!(2, -1, 105, 105, 115, "rock"),
+            p!(-2, 0, 100, 100, 110, "rock"),
+            p!(-1, 0, 115, 115, 125, "rock"),
+            p!(0, 0, 130, 130, 140, "rock"),
+            p!(1, 0, 115, 115, 125, "rock"),
+            p!(2, 0, 100, 100, 110, "rock"),
+            p!(-1, 1, 95, 95, 105, "rock"),
+            p!(0, 1, 110, 110, 120, "rock"),
+            p!(1, 1, 95, 95, 105, "rock"),
+        ];
+
+        let n = parts.len();
         Self {
             name: "boulder".to_string(),
             half_w: 2.5,
             half_h: 2.5,
             radius: 0.5,
-            parts: vec![
-                BodyPart {
-                    x: -1.0,
-                    y: -2.0,
-                    color: [100, 100, 110, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -2.0,
-                    color: [110, 110, 120, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: -2.0,
-                    color: [100, 100, 110, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: -2.0,
-                    y: -1.0,
-                    color: [105, 105, 115, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: -1.0,
-                    color: [115, 115, 125, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: -1.0,
-                    color: [115, 115, 125, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: -1.0,
-                    color: [115, 115, 125, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 2.0,
-                    y: -1.0,
-                    color: [105, 105, 115, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: -2.0,
-                    y: 0.0,
-                    color: [100, 100, 110, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 0.0,
-                    color: [110, 110, 120, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 0.0,
-                    color: [120, 120, 130, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 0.0,
-                    color: [110, 110, 120, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 2.0,
-                    y: 0.0,
-                    color: [100, 100, 110, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: -1.0,
-                    y: 1.0,
-                    color: [95, 95, 105, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 0.0,
-                    y: 1.0,
-                    color: [105, 105, 115, 255],
-                    label: "rock".into(),
-                },
-                BodyPart {
-                    x: 1.0,
-                    y: 1.0,
-                    color: [95, 95, 105, 255],
-                    label: "rock".into(),
-                },
-            ],
-            constraints: vec![
-                (0, 1),
-                (1, 2),
-                (0, 3),
-                (1, 4),
-                (2, 5),
-                (3, 4),
-                (4, 5),
-                (5, 6),
-                (3, 7),
-                (6, 7),
-                (3, 8),
-                (4, 9),
-                (5, 10),
-                (6, 11),
-                (7, 12),
-                (8, 9),
-                (9, 10),
-                (10, 11),
-                (11, 12),
-                (8, 13),
-                (9, 14),
-                (10, 15),
-                (14, 15),
-                (13, 14),
-            ],
+            parts,
+            constraints: Self::auto_constraints(n),
         }
+    }
+
+    fn auto_constraints(n: usize) -> Vec<(usize, usize)> {
+        let mut c = Vec::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                c.push((i, j));
+            }
+        }
+        c
     }
 
     pub fn apply_to(&self, entity: &mut Entity, cx: f32, cy: f32) {
@@ -449,27 +272,28 @@ impl BodyTemplate {
 
         let mut grid = vec![vec![' '; w]; h];
 
-        let label_colors: std::collections::HashMap<&str, char> =
-            std::collections::HashMap::from([
-                ("head", 'O'),
-                ("shirt", '#'),
-                ("hand", '+'),
-                ("pants", '|'),
-                ("boots", '"'),
-                ("rock", '*'),
-                ("skin", 'O'),
-                ("body", '#'),
-                ("leg", '|'),
-                ("arm", '+'),
-                ("wing", '~'),
-                ("tail", '.'),
-            ]);
+        let label_chars: std::collections::HashMap<&str, char> = std::collections::HashMap::from([
+            ("head", 'O'),
+            ("shirt", '#'),
+            ("hand", '+'),
+            ("pants", '|'),
+            ("boots", '"'),
+            ("rock", '*'),
+            ("skin", 'O'),
+            ("body", '#'),
+            ("leg", '|'),
+            ("arm", '+'),
+            ("wing", '~'),
+            ("tail", '.'),
+            ("hat", '^'),
+            ("belt", '='),
+        ]);
 
         for part in &self.parts {
             let gx = (part.x - min_x) as i32 + 1;
             let gy = (part.y - min_y) as i32 + 1;
             if gx >= 0 && gx < w as i32 && gy >= 0 && gy < h as i32 {
-                let ch = label_colors.get(part.label.as_str()).unwrap_or(&'#');
+                let ch = label_chars.get(part.label.as_str()).unwrap_or(&'#');
                 grid[gy as usize][gx as usize] = *ch;
             }
         }
