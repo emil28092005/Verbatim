@@ -245,6 +245,12 @@ impl Game {
             .spawn(ItemType::HealthPotion, px as i32 + 6, py as i32 + 1);
         self.items
             .spawn(ItemType::LeatherArmor, px as i32 - 3, py as i32 - 8);
+        self.items
+            .spawn(ItemType::Bow, px as i32 + 10, py as i32 + 1);
+        self.items
+            .spawn(ItemType::Shield, px as i32 - 10, py as i32 + 1);
+        self.items
+            .spawn(ItemType::ManaPotion, px as i32 + 3, py as i32 - 6);
     }
 
     pub fn center_camera_on(&mut self, px: f32, py: f32) {
@@ -516,10 +522,10 @@ impl Game {
         self.update_score();
         self.update_item_pickup();
 
-        if self.tick % 30 == 0 {
+        if self.tick % (30u64 - (self.depth as u64 * 3).min(20)) == 0 {
             self.try_spawn_goblin();
         }
-        if self.tick % 45 == 0 {
+        if self.tick % (45u64 - (self.depth as u64 * 4).min(30)) == 0 {
             self.try_spawn_slime();
         }
 
@@ -1364,13 +1370,14 @@ impl Game {
     }
 
     fn try_spawn_goblin(&mut self) {
+        let max_goblins = 3usize + self.depth.min(5) as usize;
         let alive_goblins = self
             .entities
             .all()
             .iter()
             .filter(|e| e.alive && e.kind == EntityKind::Goblin)
             .count();
-        if alive_goblins >= 3 {
+        if alive_goblins >= max_goblins {
             return;
         }
 
@@ -1397,17 +1404,21 @@ impl Game {
         let id = self.entities.spawn(EntityKind::Goblin);
         if let Some(g) = self.entities.get_mut(id) {
             g.build_humanoid(spawn_x as f32, spawn_y as f32);
+            g.health += self.depth as f32 * 5.0;
+            g.max_health += self.depth as f32 * 5.0;
+            g.strength += self.depth;
         }
     }
 
     fn try_spawn_slime(&mut self) {
+        let max_slimes = 2usize + self.depth.min(3) as usize;
         let alive_slimes = self
             .entities
             .all()
             .iter()
             .filter(|e| e.alive && e.kind == EntityKind::Slime)
             .count();
-        if alive_slimes >= 2 {
+        if alive_slimes >= max_slimes {
             return;
         }
 
@@ -1434,6 +1445,8 @@ impl Game {
         let id = self.entities.spawn(EntityKind::Slime);
         if let Some(s) = self.entities.get_mut(id) {
             s.build_humanoid(spawn_x as f32, spawn_y as f32);
+            s.health += self.depth as f32 * 3.0;
+            s.max_health += self.depth as f32 * 3.0;
         }
     }
 }
