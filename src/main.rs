@@ -329,7 +329,13 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     {
                         let (px, _py) = game.player.center(&game.entities);
                         let player_screen_x = ((px as i32 - game.cam_x) as f64) * 8.0 + 4.0;
-                        game.player.facing_right = input.mouse_x >= player_screen_x;
+                        let should_face_right = input.mouse_x >= player_screen_x;
+                        if should_face_right != game.player.facing_right {
+                            if let Some(e) = game.player.entity_mut(&mut game.entities) {
+                                e.flip_facing();
+                            }
+                            game.player.facing_right = should_face_right;
+                        }
                     }
 
                     if input.cam_left {

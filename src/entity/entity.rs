@@ -41,6 +41,7 @@ pub struct Entity {
     pub toughness: u32,
     pub willpower: u32,
     pub counted_for_score: bool,
+    pub facing_right: bool,
 }
 
 impl Clone for Entity {
@@ -76,6 +77,7 @@ impl Clone for Entity {
             toughness: self.toughness,
             willpower: self.willpower,
             counted_for_score: self.counted_for_score,
+            facing_right: self.facing_right,
         }
     }
 }
@@ -111,6 +113,7 @@ impl Entity {
             toughness: 10,
             willpower: 10,
             counted_for_score: false,
+            facing_right: true,
             half_w: 3.5,
             half_h: 3.0,
         }
@@ -192,6 +195,21 @@ impl Entity {
             b.y = self.cy + oy;
             b.old_x = b.x - self.cvx;
             b.old_y = b.y - self.cvy;
+        }
+    }
+
+    pub fn flip_facing(&mut self) {
+        self.facing_right = !self.facing_right;
+        for off in &mut self.rest_offsets {
+            off.0 = -off.0;
+        }
+        for b in &mut self.bodies {
+            if b.alive {
+                let dx = b.x - self.cx;
+                b.x = self.cx - dx;
+                let old_dx = b.old_x - self.cx;
+                b.old_x = self.cx - old_dx;
+            }
         }
     }
 
