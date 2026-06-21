@@ -8,6 +8,7 @@ pub struct Player {
     pub inventory: Vec<Item>,
     pub weapon: Option<Item>,
     pub armor: Option<Item>,
+    pub facing_right: bool,
 }
 
 impl Player {
@@ -20,6 +21,7 @@ impl Player {
             inventory: Vec::new(),
             weapon: None,
             armor: None,
+            facing_right: true,
         }
     }
 

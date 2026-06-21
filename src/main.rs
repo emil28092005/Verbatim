@@ -229,6 +229,12 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     } => {
                         input.on_key_event(key_event.physical_key, key_event.state);
                     }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        input.on_mouse_move(position.x, position.y);
+                    }
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        input.on_mouse_button(button, state);
+                    }
                     WindowEvent::Focused(false) => {
                         input.clear_keys();
                     }
@@ -276,14 +282,36 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                         game.player.stop_horizontal(&mut game.entities);
                     }
 
-                    if input.shoot_left {
-                        game.player_shoot(-1.0, 0.0);
-                    } else if input.shoot_right {
-                        game.player_shoot(1.0, 0.0);
-                    } else if input.shoot_up {
-                        game.player_shoot(0.0, -1.0);
-                    } else if input.shoot_down {
-                        game.player_shoot(0.0, 1.0);
+                    if input.shoot_mouse
+                        || input.shoot_left
+                        || input.shoot_right
+                        || input.shoot_up
+                        || input.shoot_down
+                    {
+                        let (px, py) = game.player.center(&game.entities);
+                        let player_screen_x = ((px as i32 - game.cam_x) as f64) * 8.0 + 4.0;
+                        let player_screen_y = ((py as i32 - game.cam_y) as f64) * 8.0 + 4.0;
+
+                        let (dx, dy) = if input.shoot_mouse {
+                            let mx = input.mouse_x - player_screen_x;
+                            let my = input.mouse_y - player_screen_y;
+                            let len = (mx * mx + my * my).sqrt();
+                            if len < 1.0 {
+                                (1.0, 0.0)
+                            } else {
+                                (mx / len, my / len)
+                            }
+                        } else if input.shoot_left {
+                            (-1.0, 0.0)
+                        } else if input.shoot_right {
+                            (1.0, 0.0)
+                        } else if input.shoot_up {
+                            (0.0, -1.0)
+                        } else {
+                            (0.0, 1.0)
+                        };
+
+                        game.player_shoot(dx as f32, dy as f32);
                     }
                     if input.toggle_fireball {
                         game.fireball_mode = !game.fireball_mode;
@@ -296,6 +324,12 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
                     if input.drop_item {
                         game.drop_item(0);
+                    }
+
+                    {
+                        let (px, _py) = game.player.center(&game.entities);
+                        let player_screen_x = ((px as i32 - game.cam_x) as f64) * 8.0 + 4.0;
+                        game.player.facing_right = input.mouse_x >= player_screen_x;
                     }
 
                     if input.cam_left {

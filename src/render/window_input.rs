@@ -19,6 +19,11 @@ pub struct WindowInput {
     pub cam_down: bool,
     pub quit: bool,
     pub paint: Option<u8>,
+    pub mouse_x: f64,
+    pub mouse_y: f64,
+    pub mouse_left: bool,
+    pub mouse_left_was_down: bool,
+    pub shoot_mouse: bool,
     jump_was_down: bool,
     shoot_left_was_down: bool,
     shoot_right_was_down: bool,
@@ -51,6 +56,11 @@ impl WindowInput {
             cam_down: false,
             quit: false,
             paint: None,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            mouse_left: false,
+            mouse_left_was_down: false,
+            shoot_mouse: false,
             jump_was_down: false,
             shoot_left_was_down: false,
             shoot_right_was_down: false,
@@ -82,6 +92,28 @@ impl WindowInput {
 
     pub fn clear_keys(&mut self) {
         self.down_keys.clear();
+        self.mouse_left = false;
+    }
+
+    pub fn on_mouse_move(&mut self, x: f64, y: f64) {
+        self.mouse_x = x;
+        self.mouse_y = y;
+    }
+
+    pub fn on_mouse_button(
+        &mut self,
+        button: winit::event::MouseButton,
+        state: winit::event::ElementState,
+    ) {
+        match (button, state) {
+            (winit::event::MouseButton::Left, winit::event::ElementState::Pressed) => {
+                self.mouse_left = true;
+            }
+            (winit::event::MouseButton::Left, winit::event::ElementState::Released) => {
+                self.mouse_left = false;
+            }
+            _ => {}
+        }
     }
 
     pub fn update(&mut self) {
@@ -128,6 +160,9 @@ impl WindowInput {
         let now_drop_item = keys.contains(&KeyCode::KeyR);
         self.drop_item = now_drop_item && !self.drop_item_was_down;
         self.drop_item_was_down = now_drop_item;
+
+        self.shoot_mouse = self.mouse_left && !self.mouse_left_was_down;
+        self.mouse_left_was_down = self.mouse_left;
 
         self.cam_left = keys.contains(&KeyCode::KeyY);
         self.cam_right = keys.contains(&KeyCode::KeyU);

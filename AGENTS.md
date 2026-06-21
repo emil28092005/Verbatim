@@ -45,13 +45,15 @@ Terminal (`--mode terminal`):
 GPU (`--mode ascii` / `--mode graphics`):
 - `a` / `d` or `←` / `→` — move
 - `w` / `↑` / `space` — jump
-- `h` / `j` / `k` / `l` — shoot left / down / up / right
+- `h` / `j` / `k` / `l` — shoot left / down / up / right (keyboard fallback)
+- **Left-click** — shoot toward mouse cursor (Noita-style aiming)
+- **Mouse position** — player faces mouse direction (left/right)
 - `f` — toggle fireball mode
 - `>` / `.` — descend when standing on stairs
 - `e` — use/equip first inventory item
 - `r` — drop first inventory item
 - `1`–`0` / `x` — paint material brush
-- `y` / `u` / `i` / `o` — move camera
+- `y` / `u` / `i` / `o` — move camera offset
 - `q` / `esc` — quit
 
 ## Shaders
