@@ -143,8 +143,8 @@ impl Projectile {
                     {
                         let mut ignited = cell;
                         ignited.material = MaterialId::Fire;
-                        ignited.temp = 400.0;
                         grid.set(x, y, ignited);
+                        grid.set_temp(x, y, 400.0);
                     }
                 }
             }

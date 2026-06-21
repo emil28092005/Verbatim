@@ -450,6 +450,7 @@ impl Game {
 
         self.stream_chunks();
         self.update_active_chunks();
+        self.apply_gas_damage();
         self.ca.step(&mut self.grid);
 
         self.update_entities();
@@ -486,6 +487,21 @@ impl Game {
             self.score += new_kills * 10;
             if let Some(player) = self.player.entity_mut(&mut self.entities) {
                 player.add_xp(new_kills * 25);
+            }
+        }
+    }
+
+    fn apply_gas_damage(&mut self) {
+        for e in self.entities.all_mut() {
+            if e.alive {
+                let (ex, ey) = e.center();
+                let (gas_type, gas_density) = self.grid.get_gas(ex as i32, ey as i32);
+                if gas_type == 2 && gas_density > 50 {
+                    e.health -= (gas_density as f32 - 50.0) * 0.1;
+                }
+                if gas_type == 3 && gas_density > 100 {
+                    e.health -= 2.0;
+                }
             }
         }
     }

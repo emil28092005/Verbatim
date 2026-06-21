@@ -45,18 +45,26 @@ impl MaterialId {
 #[derive(Clone, Copy, Debug)]
 pub struct Cell {
     pub material: MaterialId,
-    pub temp: f32,
     pub updated_this_tick: bool,
     pub variant: u8,
     pub fg: [u8; 3],
     pub bg: [u8; 3],
 }
 
+pub fn default_temp(material: MaterialId) -> f32 {
+    match material {
+        MaterialId::Lava => 1500.0,
+        MaterialId::Fire => 800.0,
+        MaterialId::Steam => 150.0,
+        MaterialId::Smoke => 120.0,
+        _ => 20.0,
+    }
+}
+
 impl Cell {
     pub fn empty() -> Self {
         Self {
             material: MaterialId::Empty,
-            temp: 20.0,
             updated_this_tick: false,
             variant: 0,
             fg: [15, 15, 20],
@@ -67,16 +75,8 @@ impl Cell {
     pub fn new(material: MaterialId) -> Self {
         let reg = MaterialRegistry::instance();
         let mat = reg.get(material);
-        let temp = match material {
-            MaterialId::Lava => 1500.0,
-            MaterialId::Fire => 800.0,
-            MaterialId::Steam => 150.0,
-            MaterialId::Smoke => 120.0,
-            _ => 20.0,
-        };
         Self {
             material,
-            temp,
             updated_this_tick: false,
             variant: rand_u8(),
             fg: [mat.color_fg.0, mat.color_fg.1, mat.color_fg.2],
@@ -117,13 +117,12 @@ impl Cell {
         self.material.display_char()
     }
 
-    pub fn to_bytes(&self) -> [u8; 12] {
-        let mut out = [0u8; 12];
+    pub fn to_bytes(&self) -> [u8; 8] {
+        let mut out = [0u8; 8];
         out[0] = self.material as u8;
-        out[1..5].copy_from_slice(&self.temp.to_le_bytes());
-        out[5] = self.variant;
-        out[6..9].copy_from_slice(&self.fg);
-        out[9..12].copy_from_slice(&self.bg);
+        out[1] = self.variant;
+        out[2..5].copy_from_slice(&self.fg);
+        out[5..8].copy_from_slice(&self.bg);
         out
     }
 
@@ -150,25 +149,19 @@ impl Cell {
                 _ => MaterialId::Stone,
             }
         };
-        let temp = if bytes.len() >= 5 {
-            f32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]])
-        } else {
-            20.0
-        };
-        let variant = bytes.get(5).copied().unwrap_or(0);
-        let fg = if bytes.len() >= 9 {
-            [bytes[6], bytes[7], bytes[8]]
+        let variant = bytes.get(1).copied().unwrap_or(0);
+        let fg = if bytes.len() >= 5 {
+            [bytes[2], bytes[3], bytes[4]]
         } else {
             [15, 15, 20]
         };
-        let bg = if bytes.len() >= 12 {
-            [bytes[9], bytes[10], bytes[11]]
+        let bg = if bytes.len() >= 8 {
+            [bytes[5], bytes[6], bytes[7]]
         } else {
             [10, 10, 15]
         };
         Self {
             material,
-            temp,
             updated_this_tick: false,
             variant,
             fg,

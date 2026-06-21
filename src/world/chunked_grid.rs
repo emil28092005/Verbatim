@@ -1,4 +1,4 @@
-use crate::world::cell::{Cell, MaterialId};
+use crate::world::cell::{default_temp, Cell, MaterialId};
 use crate::world::chunk::{Chunk, CHUNK_SIZE};
 use std::collections::HashMap;
 use std::io;
@@ -193,17 +193,168 @@ impl ChunkedGrid {
             return;
         }
         let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        let t = default_temp(mat);
         if self.is_bounded() {
             if let Some(idx) = self.chunk_index(cx, cy) {
                 if let Some(chunk) = self.chunks_vec.get_mut(idx) {
                     chunk.set_material(lx, ly, mat);
+                    chunk.set_temp(lx, ly, t);
                     chunk.mark_dirty(lx, ly);
                 }
             }
         } else {
             let chunk = self.get_or_create_chunk(cx, cy);
             chunk.set_material(lx, ly, mat);
+            chunk.set_temp(lx, ly, t);
             chunk.mark_dirty(lx, ly);
+        }
+    }
+
+    #[inline]
+    pub fn get_temp(&self, x: i32, y: i32) -> f32 {
+        if !self.in_bounds(x, y) {
+            return 20.0;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get(idx) {
+                    return chunk.get_temp(lx, ly);
+                }
+            }
+        } else if let Some(chunk) = self.chunks.get(&(cx as i64, cy as i64)) {
+            return chunk.get_temp(lx, ly);
+        }
+        20.0
+    }
+
+    #[inline]
+    pub fn set_temp(&mut self, x: i32, y: i32, t: f32) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get_mut(idx) {
+                    chunk.set_temp(lx, ly, t);
+                }
+            }
+        } else {
+            let chunk = self.get_or_create_chunk(cx, cy);
+            chunk.set_temp(lx, ly, t);
+        }
+    }
+
+    #[inline]
+    pub fn get_pressure(&self, x: i32, y: i32) -> u8 {
+        if !self.in_bounds(x, y) {
+            return 128;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get(idx) {
+                    return chunk.get_pressure(lx, ly);
+                }
+            }
+        } else if let Some(chunk) = self.chunks.get(&(cx as i64, cy as i64)) {
+            return chunk.get_pressure(lx, ly);
+        }
+        128
+    }
+
+    #[inline]
+    pub fn set_pressure(&mut self, x: i32, y: i32, p: u8) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get_mut(idx) {
+                    chunk.set_pressure(lx, ly, p);
+                    chunk.mark_dirty(lx, ly);
+                }
+            }
+        } else {
+            let chunk = self.get_or_create_chunk(cx, cy);
+            chunk.set_pressure(lx, ly, p);
+            chunk.mark_dirty(lx, ly);
+        }
+    }
+
+    #[inline]
+    pub fn get_gas(&self, x: i32, y: i32) -> (u8, u8) {
+        if !self.in_bounds(x, y) {
+            return (0, 0);
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get(idx) {
+                    return chunk.get_gas(lx, ly);
+                }
+            }
+        } else if let Some(chunk) = self.chunks.get(&(cx as i64, cy as i64)) {
+            return chunk.get_gas(lx, ly);
+        }
+        (0, 0)
+    }
+
+    #[inline]
+    pub fn set_gas(&mut self, x: i32, y: i32, gas_type: u8, density: u8) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get_mut(idx) {
+                    chunk.set_gas(lx, ly, gas_type, density);
+                    chunk.mark_dirty(lx, ly);
+                }
+            }
+        } else {
+            let chunk = self.get_or_create_chunk(cx, cy);
+            chunk.set_gas(lx, ly, gas_type, density);
+            chunk.mark_dirty(lx, ly);
+        }
+    }
+
+    #[inline]
+    pub fn get_light(&self, x: i32, y: i32) -> [u8; 3] {
+        if !self.in_bounds(x, y) {
+            return [0, 0, 0];
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get(idx) {
+                    return chunk.get_light(lx, ly);
+                }
+            }
+        } else if let Some(chunk) = self.chunks.get(&(cx as i64, cy as i64)) {
+            return chunk.get_light(lx, ly);
+        }
+        [0, 0, 0]
+    }
+
+    #[inline]
+    pub fn set_light(&mut self, x: i32, y: i32, rgb: [u8; 3]) {
+        if !self.in_bounds(x, y) {
+            return;
+        }
+        let (cx, cy, lx, ly) = self.chunk_at(x, y);
+        if self.is_bounded() {
+            if let Some(idx) = self.chunk_index(cx, cy) {
+                if let Some(chunk) = self.chunks_vec.get_mut(idx) {
+                    chunk.set_light(lx, ly, rgb);
+                }
+            }
+        } else {
+            let chunk = self.get_or_create_chunk(cx, cy);
+            chunk.set_light(lx, ly, rgb);
         }
     }
 
@@ -284,6 +435,12 @@ impl ChunkedGrid {
         }
         let (cx1, cy1, lx1, ly1) = self.chunk_at(x1, y1);
         let (cx2, cy2, lx2, ly2) = self.chunk_at(x2, y2);
+        let t1 = self.get_temp(x1, y1);
+        let t2 = self.get_temp(x2, y2);
+        let p1 = self.get_pressure(x1, y1);
+        let p2 = self.get_pressure(x2, y2);
+        let g1 = self.get_gas(x1, y1);
+        let g2 = self.get_gas(x2, y2);
         if self.is_bounded() {
             let idx1 = self.chunk_index(cx1, cy1);
             let idx2 = self.chunk_index(cx2, cy2);
@@ -292,9 +449,11 @@ impl ChunkedGrid {
                     if let Some(chunk) = self.chunks_vec.get_mut(i1) {
                         let ci1 = (ly1 as usize) * self.chunk_size + (lx1 as usize);
                         let ci2 = (ly2 as usize) * self.chunk_size + (lx2 as usize);
-                        let tmp = chunk.cells[ci1];
-                        chunk.cells[ci1] = chunk.cells[ci2];
-                        chunk.cells[ci2] = tmp;
+                        chunk.cells.swap(ci1, ci2);
+                        chunk.temps.swap(ci1, ci2);
+                        chunk.pressure.swap(ci1, ci2);
+                        chunk.gas_type.swap(ci1, ci2);
+                        chunk.gas_density.swap(ci1, ci2);
                         chunk.cells[ci2].updated_this_tick = true;
                         chunk.modified = true;
                         chunk.mark_dirty(lx1, ly1);
@@ -307,6 +466,10 @@ impl ChunkedGrid {
                     if let Some(chunk) = self.chunks_vec.get_mut(i1) {
                         let ci = (ly1 as usize) * self.chunk_size + (lx1 as usize);
                         chunk.cells[ci] = c2;
+                        chunk.temps[ci] = t2;
+                        chunk.pressure[ci] = p2;
+                        chunk.gas_type[ci] = g2.0;
+                        chunk.gas_density[ci] = g2.1;
                         chunk.cells[ci].updated_this_tick = true;
                         chunk.modified = true;
                         chunk.mark_dirty(lx1, ly1);
@@ -314,6 +477,10 @@ impl ChunkedGrid {
                     if let Some(chunk) = self.chunks_vec.get_mut(i2) {
                         let ci = (ly2 as usize) * self.chunk_size + (lx2 as usize);
                         chunk.cells[ci] = c1;
+                        chunk.temps[ci] = t1;
+                        chunk.pressure[ci] = p1;
+                        chunk.gas_type[ci] = g1.0;
+                        chunk.gas_density[ci] = g1.1;
                         chunk.modified = true;
                         chunk.mark_dirty(lx2, ly2);
                     }
@@ -325,9 +492,11 @@ impl ChunkedGrid {
             let chunk = self.get_or_create_chunk(cx1, cy1);
             let i1 = (ly1 as usize) * cs + (lx1 as usize);
             let i2 = (ly2 as usize) * cs + (lx2 as usize);
-            let tmp = chunk.cells[i1];
-            chunk.cells[i1] = chunk.cells[i2];
-            chunk.cells[i2] = tmp;
+            chunk.cells.swap(i1, i2);
+            chunk.temps.swap(i1, i2);
+            chunk.pressure.swap(i1, i2);
+            chunk.gas_type.swap(i1, i2);
+            chunk.gas_density.swap(i1, i2);
             chunk.cells[i2].updated_this_tick = true;
             chunk.modified = true;
             chunk.mark_dirty(lx1, ly1);
@@ -336,7 +505,13 @@ impl ChunkedGrid {
             let c1 = self.get(x1, y1);
             let c2 = self.get(x2, y2);
             self.set(x1, y1, c2);
+            self.set_temp(x1, y1, t2);
+            self.set_pressure(x1, y1, p2);
+            self.set_gas(x1, y1, g2.0, g2.1);
             self.set(x2, y2, c1);
+            self.set_temp(x2, y2, t1);
+            self.set_pressure(x2, y2, p1);
+            self.set_gas(x2, y2, g1.0, g1.1);
             let cs = self.chunk_size;
             let chunk = self.get_or_create_chunk(cx1, cy1);
             let i = (ly1 as usize) * cs + (lx1 as usize);
@@ -653,17 +828,25 @@ impl ChunkedGrid {
                 None => return Ok(()),
             }
         };
-        let (x0, y0, x1, y1) = self.chunk_bounds(cx, cy);
-        let w = (x1 - x0) as usize;
-        let h = (y1 - y0) as usize;
-        let mut bytes = Vec::with_capacity(w * h * 12);
-        let cs = self.chunk_size as i32;
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let lx = x - cx * cs;
-                let ly = y - cy * cs;
-                bytes.extend_from_slice(&chunk.get(lx, ly).to_bytes());
-            }
+        let area = self.chunk_size * self.chunk_size;
+        let mut bytes = Vec::with_capacity(5 + area * 8 + area * 4 + area * 2 + area + area * 3);
+        bytes.extend_from_slice(b"VWM1");
+        bytes.push(1);
+        for c in &chunk.cells {
+            bytes.extend_from_slice(&c.to_bytes());
+        }
+        for t in &chunk.temps {
+            bytes.extend_from_slice(&t.to_le_bytes());
+        }
+        for i in 0..area {
+            bytes.push(chunk.gas_type[i]);
+            bytes.push(chunk.gas_density[i]);
+        }
+        for &p in &chunk.pressure {
+            bytes.push(p);
+        }
+        for l in &chunk.light {
+            bytes.extend_from_slice(&l[..]);
         }
         let dir = Path::new(path);
         if let Some(parent) = dir.parent() {
@@ -678,23 +861,72 @@ impl ChunkedGrid {
 
     fn load_chunk_from_path(&mut self, path: &Path, cx: i32, cy: i32) -> io::Result<()> {
         let data = std::fs::read(path)?;
-        let (x0, y0, x1, y1) = self.chunk_bounds(cx, cy);
-        let w = (x1 - x0) as usize;
-        let h = (y1 - y0) as usize;
-        let expected = w * h * 12;
-        if data.len() != expected {
-            return Err(io::Error::other("chunk file size mismatch"));
-        }
-        let cs = self.chunk_size as i32;
+        let cs = self.chunk_size;
+        let area = cs * cs;
+        let bounds = self.chunk_bounds(cx, cy);
         let chunk = self.get_or_create_chunk(cx, cy);
-        let mut i = 0usize;
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let lx = x - cx * cs;
-                let ly = y - cy * cs;
-                let cell = Cell::from_bytes(&data[i * 12..(i + 1) * 12]);
+        if data.len() >= 5 && &data[0..4] == b"VWM1" {
+            let mut off = 5;
+            for i in 0..area {
+                if off + 8 > data.len() {
+                    break;
+                }
+                let cell = Cell::from_bytes(&data[off..off + 8]);
+                let lx = (i % cs) as i32;
+                let ly = (i / cs) as i32;
                 chunk.set(lx, ly, cell);
-                i += 1;
+                off += 8;
+            }
+            for i in 0..area {
+                if off + 4 > data.len() {
+                    break;
+                }
+                chunk.temps[i] =
+                    f32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+                off += 4;
+            }
+            for i in 0..area {
+                if off + 2 > data.len() {
+                    break;
+                }
+                chunk.gas_type[i] = data[off];
+                chunk.gas_density[i] = data[off + 1];
+                off += 2;
+            }
+            for i in 0..area {
+                if off >= data.len() {
+                    break;
+                }
+                chunk.pressure[i] = data[off];
+                off += 1;
+            }
+            for i in 0..area {
+                if off + 3 > data.len() {
+                    break;
+                }
+                chunk.light[i] = [data[off], data[off + 1], data[off + 2]];
+                off += 3;
+            }
+        } else {
+            let (x0, y0, x1, y1) = bounds;
+            let w = (x1 - x0) as usize;
+            let h = (y1 - y0) as usize;
+            let expected = w * h * 12;
+            if data.len() != expected {
+                return Err(io::Error::other("chunk file size mismatch"));
+            }
+            let mut i = 0usize;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let lx = x - cx * cs as i32;
+                    let ly = y - cy * cs as i32;
+                    let cell = Cell::from_bytes(&data[i * 12..(i + 1) * 12]);
+                    chunk.set(lx, ly, cell);
+                    if cell.material != MaterialId::Empty {
+                        chunk.set_temp(lx, ly, default_temp(cell.material));
+                    }
+                    i += 1;
+                }
             }
         }
         chunk.active = true;
@@ -716,6 +948,7 @@ impl ChunkedGrid {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if let Some(rest) = name.strip_prefix("chunk_") {
+                let rest = rest.strip_suffix(".bin").unwrap_or(rest);
                 let parts: Vec<&str> = rest.split('_').collect();
                 if parts.len() == 2 {
                     if let (Ok(cx), Ok(cy)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {

@@ -133,6 +133,10 @@ impl GameSession {
         CellInfo::from_grid(&self.game.grid, x, y)
     }
 
+    pub fn get_temp(&self, x: i32, y: i32) -> f32 {
+        self.game.grid.get_temp(x, y)
+    }
+
     pub fn get_region(&self, x: i32, y: i32, w: i32, h: i32) -> Vec<CellInfo> {
         let mut cells = Vec::with_capacity((w * h) as usize);
         for dy in 0..h {
@@ -186,8 +190,21 @@ impl GameSession {
 
     pub fn find_material(&self, material: &str) -> Option<(i32, i32)> {
         let target = crate::ai::state::material_from_name(material)?;
-        for y in 0..self.game.grid.height as i32 {
-            for x in 0..self.game.grid.width as i32 {
+        let (px, py) = self.game.player.center(&self.game.entities);
+        let radius = if self.game.grid.is_infinite() {
+            200
+        } else {
+            self.game.grid.width as i32
+        };
+        let cx = px as i32;
+        let cy = py as i32;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let x = cx + dx;
+                let y = cy + dy;
+                if !self.game.grid.in_bounds(x, y) {
+                    continue;
+                }
                 if self.game.grid.get(x, y).material == target {
                     return Some((x, y));
                 }

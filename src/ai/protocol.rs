@@ -289,6 +289,8 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 "entities" => crate::ai::spectrum::Spectrum::Entities,
                 "density" => crate::ai::spectrum::Spectrum::Density,
                 "velocity" => crate::ai::spectrum::Spectrum::Velocity,
+                "gas" => crate::ai::spectrum::Spectrum::Gas,
+                "pressure" => crate::ai::spectrum::Spectrum::Pressure,
                 _ => {
                     return Response::err(
                         "Unknown spectrum. Use: materials, temperature, light, entities, density, velocity",

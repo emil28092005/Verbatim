@@ -155,26 +155,26 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             }
         }
         Assertion::CellTempGreaterThan { x, y, temp } => {
-            let cell = session.get_cell(*x, *y);
-            let passed = cell.temp > *temp;
+            let cell_temp = session.get_temp(*x, *y);
+            let passed = cell_temp > *temp;
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
                 message: format!(
                     "Cell({},{}) temp = {:.1}, expected > {:.1}",
-                    x, y, cell.temp, temp
+                    x, y, cell_temp, temp
                 ),
             }
         }
         Assertion::CellTempLessThan { x, y, temp } => {
-            let cell = session.get_cell(*x, *y);
-            let passed = cell.temp < *temp;
+            let cell_temp = session.get_temp(*x, *y);
+            let passed = cell_temp < *temp;
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
                 message: format!(
                     "Cell({},{}) temp = {:.1}, expected < {:.1}",
-                    x, y, cell.temp, temp
+                    x, y, cell_temp, temp
                 ),
             }
         }

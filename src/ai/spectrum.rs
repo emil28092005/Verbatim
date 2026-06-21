@@ -8,6 +8,8 @@ pub enum Spectrum {
     Entities,
     Density,
     Velocity,
+    Gas,
+    Pressure,
 }
 
 impl Spectrum {
@@ -19,6 +21,8 @@ impl Spectrum {
             Spectrum::Entities => "entities",
             Spectrum::Density => "density",
             Spectrum::Velocity => "velocity",
+            Spectrum::Gas => "gas",
+            Spectrum::Pressure => "pressure",
         }
     }
 
@@ -30,6 +34,8 @@ impl Spectrum {
             Spectrum::Entities,
             Spectrum::Density,
             Spectrum::Velocity,
+            Spectrum::Gas,
+            Spectrum::Pressure,
         ]
     }
 }
@@ -51,6 +57,8 @@ pub fn render_spectrum(
         Spectrum::Entities => render_entities(grid, entities, cam_x, cam_y, vw, vh),
         Spectrum::Density => render_density(grid, cam_x, cam_y, vw, vh),
         Spectrum::Velocity => render_velocity(grid, entities, cam_x, cam_y, vw, vh),
+        Spectrum::Gas => render_gas(grid, cam_x, cam_y, vw, vh),
+        Spectrum::Pressure => render_pressure(grid, cam_x, cam_y, vw, vh),
     }
 }
 
@@ -113,7 +121,7 @@ fn render_temperature(grid: &ChunkedGrid, cam_x: i32, cam_y: i32, vw: usize, vh:
                 if cell.is_empty() {
                     buf.push(' ');
                 } else {
-                    let t = cell.temp;
+                    let t = grid.get_temp(x, y);
                     let ch = if t < 0.0 {
                         '.'
                     } else if t < 20.0 {
@@ -158,6 +166,13 @@ fn render_light(
             let (r, g, b) = if let Some(lg) = light {
                 let c = lg.get(dx as i32, dy as i32);
                 (c[0], c[1], c[2])
+            } else if grid.in_bounds(x, y) {
+                let wl = grid.get_light(x, y);
+                if wl[0] > 0 || wl[1] > 0 || wl[2] > 0 {
+                    (wl[0], wl[1], wl[2])
+                } else {
+                    (ambient[0], ambient[1], ambient[2])
+                }
             } else {
                 (ambient[0], ambient[1], ambient[2])
             };
@@ -363,4 +378,64 @@ pub fn format_all_spectrums(
         out.push('\n');
     }
     out
+}
+
+fn render_gas(grid: &ChunkedGrid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+    let mut buf = String::with_capacity(vw * vh + vh);
+    for dy in 0..vh {
+        for dx in 0..vw {
+            let x = cam_x + dx as i32;
+            let y = cam_y + dy as i32;
+            if !grid.in_bounds(x, y) {
+                buf.push(' ');
+            } else {
+                let (gt, gd) = grid.get_gas(x, y);
+                let ch = if gd == 0 {
+                    ' '
+                } else {
+                    match gt {
+                        1 => '.', // smoke
+                        2 => 'x', // poison
+                        3 => 'o', // CO2
+                        4 => '~', // steam
+                        _ => '?',
+                    }
+                };
+                buf.push(ch);
+            }
+        }
+        buf.push('\n');
+    }
+    buf
+}
+
+fn render_pressure(grid: &ChunkedGrid, cam_x: i32, cam_y: i32, vw: usize, vh: usize) -> String {
+    let mut buf = String::with_capacity(vw * vh + vh);
+    for dy in 0..vh {
+        for dx in 0..vw {
+            let x = cam_x + dx as i32;
+            let y = cam_y + dy as i32;
+            if !grid.in_bounds(x, y) {
+                buf.push(' ');
+            } else {
+                let p = grid.get_pressure(x, y);
+                let ch = if p < 80 {
+                    'L'
+                } else if p < 120 {
+                    '-'
+                } else if p < 140 {
+                    '.'
+                } else if p < 180 {
+                    '+'
+                } else if p < 220 {
+                    'o'
+                } else {
+                    '#'
+                };
+                buf.push(ch);
+            }
+        }
+        buf.push('\n');
+    }
+    buf
 }

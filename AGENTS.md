@@ -53,9 +53,9 @@ Pipe protocol spectrum commands:
 ## Tests
 
 ```sh
-cargo test                           # all 171 integration tests
+cargo test                           # all 185 integration tests (171 original + 14 multilayer)
 cargo test --test physics_sand       # single test file
-cargo test --test slime              # slime-specific tests
+cargo test --test multilayer         # multi-layer world tests
 cargo run -- --mode test --scenario-dir scenarios  # 14 JSON scenarios
 ```
 
@@ -103,12 +103,25 @@ SPV files are committed. `include_bytes!` embeds them at compile time.
 
 ## Architecture
 
-**Source of truth**: `ChunkedGrid` of `Cell` structs. Replaces the old fixed-size `Grid` with dual storage:
+**Source of truth**: `ChunkedGrid` of `Cell` structs with parallel per-chunk layer arrays. Replaces the old fixed-size `Grid` with dual storage:
 
 - **Bounded mode**: `Vec<Chunk>` for deterministic 250x250 test/AI grids.
 - **Infinite mode**: `HashMap<(i64, i64), Chunk>` for continuous 12500x12500 cell (100000x100000 px) Noita-scale worlds.
 
-Main game (`--mode terminal`, `--mode ascii`, `--mode graphics`) uses the infinite mode. Each `Cell` stores `material`, `temp`, `fg`/`bg` color, `variant` inline. No double buffer. Chunks are 64x64 cells with `active`, `modified`, `was_modified`, and `dirty` flags.
+Main game (`--mode terminal`, `--mode ascii`, `--mode graphics`) uses the infinite mode. Each `Cell` stores `material`, `fg`/`bg` color, `variant` inline (9 bytes, no temp). Temperature, gas, pressure, and light are stored in parallel arrays per chunk. Chunks are 64x64 cells with `active`, `modified`, `was_modified`, `generated`, and `dirty` flags.
+
+**Multi-layer world** (Phase 6): Each `Chunk` has 5 parallel arrays alongside `cells`:
+- `temps: Vec<f32>` — temperature per cell (16 KB/chunk)
+- `pressure: Vec<u8>` — pressure per cell, 128 = atmospheric (4 KB/chunk)
+- `gas_type: Vec<u8>` — gas type: 0=air, 1=smoke, 2=poison, 3=CO2, 4=steam (4 KB/chunk)
+- `gas_density: Vec<u8>` — gas concentration 0-255 (4 KB/chunk)
+- `light: Vec<[u8;3]>` — world-space RGB light (12 KB/chunk)
+
+Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `grid.get_pressure()`/`set_pressure()`, `grid.get_light()`/`set_light()`. All `set_*` methods call `mark_dirty()` (shared dirty rect). `cells_swap` swaps all layers. `set_material` also sets `default_temp()`.
+
+**Simulation steps** per `fixed_update()`: `apply_gas_damage()` → `ca.step()` (material CA + heat_transfer + gas_step + pressure_step + light_step) → entity updates → combat → status effects. The `ca.step()` saves pre-clear dirty rects and passes them to layer steps so heat/gas/pressure can diffuse beyond CA-active cells.
+
+**Serialization**: Multi-section chunk format with `VWM1` magic header. Sections: cells (8 bytes × 4096), temps (4 × 4096), gas (2 × 4096), pressure (1 × 4096), light (3 × 4096). Old 12-byte format auto-detected and loaded for backward compat.
 
 **Four entity kinds**: `Player`, `Goblin`, `Slime`, `Corpse`. Three physics types: cellular (CA materials in grid), rigid (alive entities, AABB + slope stepping), ragdoll (corpses, Verlet constraints).
 

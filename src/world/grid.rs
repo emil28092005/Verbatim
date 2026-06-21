@@ -321,7 +321,7 @@ impl Grid {
         let (x0, y0, x1, y1) = self.chunk_bounds(cx as usize, cy as usize);
         let w = (x1 - x0) as usize;
         let h = (y1 - y0) as usize;
-        let mut bytes = Vec::with_capacity(w * h * 12);
+        let mut bytes = Vec::with_capacity(w * h * 8);
         for y in y0..y1 {
             for x in x0..x1 {
                 bytes.extend_from_slice(&self.get(x, y).to_bytes());
@@ -342,14 +342,14 @@ impl Grid {
         let (x0, y0, x1, y1) = self.chunk_bounds(cx as usize, cy as usize);
         let w = (x1 - x0) as usize;
         let h = (y1 - y0) as usize;
-        let expected = w * h * 12;
+        let expected = w * h * 8;
         if data.len() != expected {
             return Err(io::Error::other("chunk file size mismatch"));
         }
         let mut i = 0usize;
         for y in y0..y1 {
             for x in x0..x1 {
-                let cell = Cell::from_bytes(&data[i * 12..(i + 1) * 12]);
+                let cell = Cell::from_bytes(&data[i * 8..(i + 1) * 8]);
                 self.set(x, y, cell);
                 i += 1;
             }

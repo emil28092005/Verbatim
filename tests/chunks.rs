@@ -1,5 +1,5 @@
 use verbatim::world::cell::{Cell, MaterialId};
-use verbatim::world::chunk::{CHUNK_SIZE, Chunk, world_to_chunk};
+use verbatim::world::chunk::{world_to_chunk, Chunk, CHUNK_SIZE};
 use verbatim::world::grid::Grid;
 
 #[test]
@@ -48,7 +48,6 @@ fn cell_serialization_roundtrip() {
     assert_eq!(c.fg, c2.fg);
     assert_eq!(c.bg, c2.bg);
     assert_eq!(c.variant, c2.variant);
-    assert!((c.temp - c2.temp).abs() < 0.001);
 }
 
 #[test]

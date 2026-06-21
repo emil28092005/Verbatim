@@ -79,7 +79,7 @@ impl CellInfo {
             x,
             y,
             material: mat.name.to_string(),
-            temp: cell.temp,
+            temp: grid.get_temp(x, y),
             is_solid: mat.solid,
             is_liquid: mat.liquid,
             is_gas: mat.gas,
