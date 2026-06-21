@@ -59,20 +59,33 @@ Three render modes:
 
 **Goal: entities can fight and affect each other**
 
-- [ ] Melee combat: rigid entity AABB overlap → damage exchange
-- [ ] Health bars in terminal render (colored indicator above entity)
+Player combat style: **ranged** — player primarily shoots projectiles, not melee.
+Melee exists as secondary (contact damage from enemies, knockback) but the core
+loop is: aim → shoot → projectile travels → hits enemy → damage/kill.
+
+- [x] Contact damage: enemies deal damage on AABB overlap with player
+- [x] Knockback: damage applies velocity impulse to rigid body center
+- [x] Goblin AI: move toward player, attack when adjacent
+- [x] Slime AI: jump toward player, contact damage
+- [ ] **Projectile system**: lightweight rigid bodies (arrows, fireballs, magic bolts)
+  - Player shoots with directional input (mouse aim or movement-direction)
+  - Projectile = small AABB, velocity, damage, lifetime
+  - On hit with entity: deal damage, destroy projectile
+  - On hit with solid cell: stop/destroy
+  - Fireball: ignites materials it touches (Noita-style material interaction)
+  - Magic bolt: pure damage, no material effect
+- [ ] Health bars in render (colored indicator above entity)
 - [ ] Death → ragdoll → corpse decomposition (flesh cells drop into grid over time)
-- [ ] Projectile system: thrown objects (arrows, fireballs) as lightweight rigid bodies
 - [ ] Material interaction with entities: entity walks through fire → ignites, acid → dissolves
-- [ ] Knockback: damage applies velocity impulse to rigid body center
-- [ ] Goblin AI: move toward player, attack when adjacent, flee when low HP
+- [ ] Goblin AI: flee when low HP
 
 **Tests needed:**
-- Melee damage between two entities
+- Projectile travels and deals damage on hit
+- Projectile stops on solid cell
+- Fireball ignites wood on contact
+- Contact damage from enemies (done — slime tests)
 - Knockback direction correctness
 - Corpse decomposition produces flesh cells in grid
-- Projectile travels and deals damage on hit
-- Goblin AI moves toward player
 
 ### Phase 1.5: UI Layer (Non-Destructive Overlay)
 
