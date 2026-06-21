@@ -421,11 +421,22 @@ impl UiLayer {
 
         let inv_title = "INV:";
         self.draw_text(start_x + 2, start_y + 37, inv_title, fg, 255);
-        for (idx, item) in player_state.inventory.iter().take(6).enumerate() {
-            let ix = start_x + 14 + (idx as i32 * 4);
-            if ix < start_x + w - 2 {
-                self.set(ix, start_y + 38, item.display_char(), item.color(), bg);
+        let mut ix = start_x + 14;
+        for item in player_state.inventory.iter().take(8) {
+            if ix + 1 >= start_x + w - 1 {
+                break;
             }
+            let [ch1, ch2] = item.display_glyph();
+            let col = item.color();
+            self.set(ix, start_y + 38, ch1, col, bg);
+            self.set(
+                ix + 1,
+                start_y + 38,
+                ch2,
+                [col[0] / 2, col[1] / 2, col[2] / 2],
+                bg,
+            );
+            ix += 3;
         }
 
         let status = if let Some(p) = player {
@@ -470,30 +481,16 @@ impl UiLayer {
         let border = [160u8, 170, 210];
         let fill_alpha = 140u8;
         let brush_name = material_name(brush);
-        let weapon_name = player_state
+        let weapon_glyph = player_state
             .weapon
             .as_ref()
-            .map(|i| {
-                let n = i.name();
-                if n.len() > 12 {
-                    &n[..12]
-                } else {
-                    n
-                }
-            })
-            .unwrap_or("NONE");
-        let armor_name = player_state
+            .map(|i| i.display_string())
+            .unwrap_or("  ".to_string());
+        let armor_glyph = player_state
             .armor
             .as_ref()
-            .map(|i| {
-                let n = i.name();
-                if n.len() > 12 {
-                    &n[..12]
-                } else {
-                    n
-                }
-            })
-            .unwrap_or("NONE");
+            .map(|i| i.display_string())
+            .unwrap_or("  ".to_string());
 
         let bar_h = 18i32;
         let y_top = screen_h as i32 - bar_h;
@@ -539,8 +536,8 @@ impl UiLayer {
 
         let gear = format!(
             "W:[{}] A:[{}] INV:{} FPS:{}",
-            weapon_name,
-            armor_name,
+            weapon_glyph,
+            armor_glyph,
             player_state.inventory.len(),
             fps as i32
         );

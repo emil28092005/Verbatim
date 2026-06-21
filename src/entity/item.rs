@@ -54,6 +54,26 @@ impl Item {
         }
     }
 
+    pub fn display_glyph(&self) -> [char; 2] {
+        match self.typ {
+            ItemType::Dagger => ['/', ')'],
+            ItemType::Sword => ['|', '|'],
+            ItemType::Bow => [')', '{'],
+            ItemType::LeatherArmor => ['[', 'L'],
+            ItemType::PlateArmor => ['{', 'P'],
+            ItemType::Shield => ['O', 'S'],
+            ItemType::HealthPotion => ['!', 'H'],
+            ItemType::ManaPotion => ['!', 'M'],
+            ItemType::Food => ['%', 'F'],
+            ItemType::Scroll => ['?', 'S'],
+        }
+    }
+
+    pub fn display_string(&self) -> String {
+        let [a, b] = self.display_glyph();
+        format!("{}{}", a, b)
+    }
+
     pub fn color(&self) -> [u8; 3] {
         match self.typ {
             ItemType::Dagger => [200, 200, 200],
