@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
 use crate::ai::session::GameSession;
 use crate::ai::state::GameState;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Scenario {
@@ -136,7 +136,10 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Cell({},{}) = '{}', expected '{}'", x, y, cell.material, material),
+                message: format!(
+                    "Cell({},{}) = '{}', expected '{}'",
+                    x, y, cell.material, material
+                ),
             }
         }
         Assertion::CellIsNot { x, y, material } => {
@@ -145,7 +148,10 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Cell({},{}) = '{}', expected NOT '{}'", x, y, cell.material, material),
+                message: format!(
+                    "Cell({},{}) = '{}', expected NOT '{}'",
+                    x, y, cell.material, material
+                ),
             }
         }
         Assertion::CellTempGreaterThan { x, y, temp } => {
@@ -154,7 +160,10 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Cell({},{}) temp = {:.1}, expected > {:.1}", x, y, cell.temp, temp),
+                message: format!(
+                    "Cell({},{}) temp = {:.1}, expected > {:.1}",
+                    x, y, cell.temp, temp
+                ),
             }
         }
         Assertion::CellTempLessThan { x, y, temp } => {
@@ -163,25 +172,48 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Cell({},{}) temp = {:.1}, expected < {:.1}", x, y, cell.temp, temp),
+                message: format!(
+                    "Cell({},{}) temp = {:.1}, expected < {:.1}",
+                    x, y, cell.temp, temp
+                ),
             }
         }
-        Assertion::NoMaterialInRegion { x, y, w, h, material } => {
+        Assertion::NoMaterialInRegion {
+            x,
+            y,
+            w,
+            h,
+            material,
+        } => {
             let count = session.count_material_in_region(*x, *y, *w, *h, material);
             let passed = count == 0;
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Region({},{},{},{}) has {} '{}' cells, expected 0", x, y, w, h, count, material),
+                message: format!(
+                    "Region({},{},{},{}) has {} '{}' cells, expected 0",
+                    x, y, w, h, count, material
+                ),
             }
         }
-        Assertion::MaterialCountInRegion { x, y, w, h, material, min, max } => {
+        Assertion::MaterialCountInRegion {
+            x,
+            y,
+            w,
+            h,
+            material,
+            min,
+            max,
+        } => {
             let count = session.count_material_in_region(*x, *y, *w, *h, material);
             let passed = count >= *min && count <= *max;
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Region({},{},{},{}) has {} '{}' cells, expected {}-{}", x, y, w, h, count, material, min, max),
+                message: format!(
+                    "Region({},{},{},{}) has {} '{}' cells, expected {}-{}",
+                    x, y, w, h, count, material, min, max
+                ),
             }
         }
         Assertion::EntityAlive { id } => {
@@ -191,7 +223,11 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Entity({}) alive = {}", id, if passed { "true" } else { "false/not found" }),
+                message: format!(
+                    "Entity({}) alive = {}",
+                    id,
+                    if passed { "true" } else { "false/not found" }
+                ),
             }
         }
         Assertion::EntityDead { id } => {
@@ -201,7 +237,11 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Entity({}) dead = {}", id, if passed { "true" } else { "false" }),
+                message: format!(
+                    "Entity({}) dead = {}",
+                    id,
+                    if passed { "true" } else { "false" }
+                ),
             }
         }
         Assertion::EntityHealthLessThan { id, health } => {
@@ -212,7 +252,10 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
             AssertionResult {
                 assertion: assertion.clone(),
                 passed,
-                message: format!("Entity({}) health = {:.1}, expected < {:.1}", id, actual, health),
+                message: format!(
+                    "Entity({}) health = {:.1}, expected < {:.1}",
+                    id, actual, health
+                ),
             }
         }
         Assertion::EntityOnFire { id } => {
@@ -259,13 +302,11 @@ fn check_assertion(session: &GameSession, assertion: &Assertion) -> AssertionRes
                 message: format!("Tick = {}, expected {}", session.tick(), tick),
             }
         }
-        Assertion::Custom { description, check } => {
-            AssertionResult {
-                assertion: assertion.clone(),
-                passed: false,
-                message: format!("Custom check '{}' not implemented: {}", check, description),
-            }
-        }
+        Assertion::Custom { description, check } => AssertionResult {
+            assertion: assertion.clone(),
+            passed: false,
+            message: format!("Custom check '{}' not implemented: {}", check, description),
+        },
     }
 }
 
@@ -299,11 +340,19 @@ pub fn format_results(results: &[ScenarioResult]) -> String {
     let total = results.len();
     let passed = results.iter().filter(|r| r.passed).count();
 
-    out.push_str(&format!("=== Scenario Results: {}/{} passed ===\n\n", passed, total));
+    out.push_str(&format!(
+        "=== Scenario Results: {}/{} passed ===\n\n",
+        passed, total
+    ));
 
     for r in results {
         let status = if r.passed { "PASS" } else { "FAIL" };
-        out.push_str(&format!("[{}] {} - {} assertions\n", status, r.name, r.assertions.len()));
+        out.push_str(&format!(
+            "[{}] {} - {} assertions\n",
+            status,
+            r.name,
+            r.assertions.len()
+        ));
         if !r.passed {
             for a in &r.assertions {
                 if !a.passed {

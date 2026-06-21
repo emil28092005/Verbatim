@@ -1,6 +1,6 @@
 use crate::ai::action::AiAction;
 use crate::ai::replay::ReplayRecorder;
-use crate::ai::state::{build_game_state, CellInfo, EntityInfo, GameState, render_view};
+use crate::ai::state::{build_game_state, render_view, CellInfo, EntityInfo, GameState};
 use crate::game::Game;
 use crate::world::cell::MaterialId;
 use crate::world::grid::Grid;
@@ -77,6 +77,58 @@ impl GameSession {
         render_view(&self.game.grid, &self.game.entities, cam_x, cam_y, w, h)
     }
 
+    pub fn get_spectrum(
+        &self,
+        spectrum: &crate::ai::spectrum::Spectrum,
+        w: usize,
+        h: usize,
+    ) -> String {
+        let (px, py) = self.game.player.center(&self.game.entities);
+        let cam_x = px as i32 - (w as i32 / 2);
+        let cam_y = py as i32 - (h as i32 / 2);
+        let light = crate::render::lighting::compute_lighting(
+            &self.game.grid,
+            cam_x,
+            cam_y,
+            w,
+            h,
+            crate::render::lighting::ambient_light(),
+        );
+        crate::ai::spectrum::render_spectrum(
+            spectrum,
+            &self.game.grid,
+            &self.game.entities,
+            Some(&light),
+            cam_x,
+            cam_y,
+            w,
+            h,
+        )
+    }
+
+    pub fn get_all_spectrums(&self, w: usize, h: usize) -> Vec<(String, String)> {
+        let (px, py) = self.game.player.center(&self.game.entities);
+        let cam_x = px as i32 - (w as i32 / 2);
+        let cam_y = py as i32 - (h as i32 / 2);
+        let light = crate::render::lighting::compute_lighting(
+            &self.game.grid,
+            cam_x,
+            cam_y,
+            w,
+            h,
+            crate::render::lighting::ambient_light(),
+        );
+        crate::ai::spectrum::render_all_spectrums(
+            &self.game.grid,
+            &self.game.entities,
+            Some(&light),
+            cam_x,
+            cam_y,
+            w,
+            h,
+        )
+    }
+
     pub fn get_cell(&self, x: i32, y: i32) -> CellInfo {
         CellInfo::from_grid(&self.game.grid, x, y)
     }
@@ -92,16 +144,29 @@ impl GameSession {
     }
 
     pub fn get_entities(&self) -> Vec<EntityInfo> {
-        self.game.entities.all().iter().map(|e| {
-            crate::ai::state::entity_info(e)
-        }).collect()
+        self.game
+            .entities
+            .all()
+            .iter()
+            .map(|e| crate::ai::state::entity_info(e))
+            .collect()
     }
 
     pub fn get_player(&self) -> Option<EntityInfo> {
-        self.game.player.entity(&self.game.entities).map(|e| crate::ai::state::entity_info(e))
+        self.game
+            .player
+            .entity(&self.game.entities)
+            .map(|e| crate::ai::state::entity_info(e))
     }
 
-    pub fn count_material_in_region(&self, x: i32, y: i32, w: i32, h: i32, material: &str) -> usize {
+    pub fn count_material_in_region(
+        &self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        material: &str,
+    ) -> usize {
         let target = crate::ai::state::material_from_name(material);
         if target.is_none() {
             return 0;
@@ -151,7 +216,9 @@ impl GameSession {
     pub fn clear_area(&mut self, x: i32, y: i32, w: i32, h: i32) {
         for dy in 0..h {
             for dx in 0..w {
-                self.game.grid.set(x + dx, y + dy, crate::world::cell::Cell::empty());
+                self.game
+                    .grid
+                    .set(x + dx, y + dy, crate::world::cell::Cell::empty());
             }
         }
     }

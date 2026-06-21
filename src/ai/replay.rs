@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
 use crate::ai::session::GameSession;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReplayRecording {
@@ -40,12 +40,14 @@ impl ReplayRecorder {
     }
 
     pub fn record_action(&mut self, tick: u64, action: AiAction) {
-        self.recording.events.push(ReplayEvent::Action { tick, action });
+        self.recording
+            .events
+            .push(ReplayEvent::Action { tick, action });
     }
 
     pub fn save(&self, path: &str) -> std::io::Result<()> {
-        let json = serde_json::to_string_pretty(&self.recording)
-            .map_err(|e| std::io::Error::other(e))?;
+        let json =
+            serde_json::to_string_pretty(&self.recording).map_err(|e| std::io::Error::other(e))?;
         std::fs::write(path, json)
     }
 
@@ -61,8 +63,8 @@ pub struct ReplayPlayer {
 impl ReplayPlayer {
     pub fn load(path: &str) -> std::io::Result<Self> {
         let data = std::fs::read_to_string(path)?;
-        let recording: ReplayRecording = serde_json::from_str(&data)
-            .map_err(|e| std::io::Error::other(e))?;
+        let recording: ReplayRecording =
+            serde_json::from_str(&data).map_err(|e| std::io::Error::other(e))?;
         Ok(Self { recording })
     }
 

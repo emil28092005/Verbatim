@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
 use crate::ai::action::AiAction;
+use crate::ai::scenario::{format_results, load_scenario, run_all_scenarios, run_scenario};
 use crate::ai::session::GameSession;
-use crate::ai::scenario::{run_scenario, format_results, load_scenario, run_all_scenarios};
 use crate::ai::state::GameState;
+use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Write};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,6 +29,19 @@ pub enum Command {
         view_h: Option<usize>,
     },
     GetView {
+        #[serde(default)]
+        w: Option<usize>,
+        #[serde(default)]
+        h: Option<usize>,
+    },
+    GetSpectrum {
+        spectrum: String,
+        #[serde(default)]
+        w: Option<usize>,
+        #[serde(default)]
+        h: Option<usize>,
+    },
+    GetAllSpectrums {
         #[serde(default)]
         w: Option<usize>,
         #[serde(default)]
@@ -86,6 +99,8 @@ pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub view: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectrums: Option<Vec<(String, String)>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cell: Option<crate::ai::state::CellInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<Vec<crate::ai::state::CellInfo>>,
@@ -109,9 +124,19 @@ impl Response {
     pub fn ok() -> Self {
         Self {
             ok: true,
-            error: None, state: None, view: None, cell: None, region: None,
-            entities: None, player: None, count: None, found: None,
-            scenario_result: None, scenario_results: None, recording: None,
+            error: None,
+            state: None,
+            view: None,
+            spectrums: None,
+            cell: None,
+            region: None,
+            entities: None,
+            player: None,
+            count: None,
+            found: None,
+            scenario_result: None,
+            scenario_results: None,
+            recording: None,
         }
     }
 
@@ -119,9 +144,18 @@ impl Response {
         Self {
             ok: false,
             error: Some(msg.to_string()),
-            state: None, view: None, cell: None, region: None,
-            entities: None, player: None, count: None, found: None,
-            scenario_result: None, scenario_results: None, recording: None,
+            state: None,
+            view: None,
+            spectrums: None,
+            cell: None,
+            region: None,
+            entities: None,
+            player: None,
+            count: None,
+            found: None,
+            scenario_result: None,
+            scenario_results: None,
+            recording: None,
         }
     }
 
@@ -153,7 +187,12 @@ pub fn run_pipe_protocol() {
             Ok(c) => c,
             Err(e) => {
                 let resp = Response::err(&format!("Parse error: {}", e));
-                writeln!(stdout, "{}", serde_json::to_string(&resp).unwrap_or_default()).ok();
+                writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::to_string(&resp).unwrap_or_default()
+                )
+                .ok();
                 stdout.flush().ok();
                 continue;
             }
@@ -230,7 +269,47 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
             let vw = w.unwrap_or(80);
             let vh = h.unwrap_or(25);
             let view = s.get_view(vw, vh);
-            Response { view: Some(view), ..Response::ok() }
+            Response {
+                view: Some(view),
+                ..Response::ok()
+            }
+        }
+
+        Command::GetSpectrum { spectrum, w, h } => {
+            let s = match session.as_ref() {
+                Some(s) => s,
+                None => return Response::err("No session."),
+            };
+            let vw = w.unwrap_or(80);
+            let vh = h.unwrap_or(25);
+            let spec = match spectrum.as_str() {
+                "materials" => crate::ai::spectrum::Spectrum::Materials,
+                "temperature" | "temp" => crate::ai::spectrum::Spectrum::Temperature,
+                "light" => crate::ai::spectrum::Spectrum::Light,
+                "entities" => crate::ai::spectrum::Spectrum::Entities,
+                "density" => crate::ai::spectrum::Spectrum::Density,
+                "velocity" => crate::ai::spectrum::Spectrum::Velocity,
+                _ => return Response::err("Unknown spectrum. Use: materials, temperature, light, entities, density, velocity"),
+            };
+            let view = s.get_spectrum(&spec, vw, vh);
+            Response {
+                spectrums: Some(vec![(spectrum, view)]),
+                ..Response::ok()
+            }
+        }
+
+        Command::GetAllSpectrums { w, h } => {
+            let s = match session.as_ref() {
+                Some(s) => s,
+                None => return Response::err("No session."),
+            };
+            let vw = w.unwrap_or(80);
+            let vh = h.unwrap_or(25);
+            let spectrums = s.get_all_spectrums(vw, vh);
+            Response {
+                spectrums: Some(spectrums),
+                ..Response::ok()
+            }
         }
 
         Command::GetViewAt { cam_x, cam_y, w, h } => {
@@ -239,7 +318,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let view = s.get_view_at(cam_x, cam_y, w, h);
-            Response { view: Some(view), ..Response::ok() }
+            Response {
+                view: Some(view),
+                ..Response::ok()
+            }
         }
 
         Command::GetCell { x, y } => {
@@ -248,7 +330,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let cell = s.get_cell(x, y);
-            Response { cell: Some(cell), ..Response::ok() }
+            Response {
+                cell: Some(cell),
+                ..Response::ok()
+            }
         }
 
         Command::GetRegion { x, y, w, h } => {
@@ -257,7 +342,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let region = s.get_region(x, y, w, h);
-            Response { region: Some(region), ..Response::ok() }
+            Response {
+                region: Some(region),
+                ..Response::ok()
+            }
         }
 
         Command::GetEntities => {
@@ -266,7 +354,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let entities = s.get_entities();
-            Response { entities: Some(entities), ..Response::ok() }
+            Response {
+                entities: Some(entities),
+                ..Response::ok()
+            }
         }
 
         Command::GetPlayer => {
@@ -275,16 +366,28 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let player = s.get_player();
-            Response { player, ..Response::ok() }
+            Response {
+                player,
+                ..Response::ok()
+            }
         }
 
-        Command::CountMaterial { x, y, w, h, material } => {
+        Command::CountMaterial {
+            x,
+            y,
+            w,
+            h,
+            material,
+        } => {
             let s = match session.as_ref() {
                 Some(s) => s,
                 None => return Response::err("No session."),
             };
             let count = s.count_material_in_region(x, y, w, h, &material);
-            Response { count: Some(count), ..Response::ok() }
+            Response {
+                count: Some(count),
+                ..Response::ok()
+            }
         }
 
         Command::FindMaterial { material } => {
@@ -293,7 +396,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             let found = s.find_material(&material);
-            Response { found, ..Response::ok() }
+            Response {
+                found,
+                ..Response::ok()
+            }
         }
 
         Command::RecordStart => {
@@ -302,7 +408,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             s.set_recording(true);
-            Response { recording: Some(true), ..Response::ok() }
+            Response {
+                recording: Some(true),
+                ..Response::ok()
+            }
         }
 
         Command::RecordStop => {
@@ -311,7 +420,10 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
                 None => return Response::err("No session."),
             };
             s.set_recording(false);
-            Response { recording: Some(false), ..Response::ok() }
+            Response {
+                recording: Some(false),
+                ..Response::ok()
+            }
         }
 
         Command::ReplaySave { path } => {
@@ -325,20 +437,24 @@ fn handle_command(cmd: Command, session: &mut Option<GameSession>) -> Response {
             }
         }
 
-        Command::RunScenario { path } => {
-            match load_scenario(&path) {
-                Ok(scenario) => {
-                    let result = run_scenario(&scenario);
-                    Response { scenario_result: Some(result), ..Response::ok() }
+        Command::RunScenario { path } => match load_scenario(&path) {
+            Ok(scenario) => {
+                let result = run_scenario(&scenario);
+                Response {
+                    scenario_result: Some(result),
+                    ..Response::ok()
                 }
-                Err(e) => Response::err(&e),
             }
-        }
+            Err(e) => Response::err(&e),
+        },
 
         Command::RunAllScenarios { dir } => {
             let results = run_all_scenarios(&dir);
             let report = format_results(&results);
-            Response { scenario_results: Some(report), ..Response::ok() }
+            Response {
+                scenario_results: Some(report),
+                ..Response::ok()
+            }
         }
 
         Command::Quit => {

@@ -4,19 +4,49 @@
 
 ```sh
 cargo build                          # debug build
-cargo run --release -- --mode ascii       # Vulkan window, ASCII glyphs (default, recommended)
-cargo run --release -- --mode graphics    # Vulkan window, colored cells, 16:9 window (recommended)
-cargo run -- --mode ascii            # Vulkan window, ASCII glyphs (debug build, slower)
-cargo run -- --mode graphics         # Vulkan window, colored cells, 16:9 window (debug build, slower)
-cargo run -- --mode terminal         # ANSI terminal mode
+cargo run --release -- --mode graphics    # Vulkan colored cells (PRIMARY, recommended)
+cargo run --release -- --mode ascii       # Vulkan ASCII glyphs (debug backend)
+cargo run -- --mode terminal         # ANSI terminal mode (legacy)
 cargo run -- --mode pipe             # JSON stdin/stdout for AI agents
 cargo run -- --mode test             # run all JSON scenarios
 cargo run -- --mode headless --headless-ticks 60  # dump to headless_dump.txt
 cargo run -- --mode capture --headless-ticks 60    # render graphics-like PNG to capture.png
 cargo run --release -- --mode benchmark --benchmark-ticks 600 --benchmark-renderer graphics  # FPS benchmark
+cargo run --release -- --mode tape --headless-ticks 300 --tape-interval 10 --tape-output tape.txt --tape-json tape.json  # multi-spectrum recording
 ```
 
 Rust edition 2024, requires rustc >= 1.96. Vulkan 1.2+ required for `ascii`/`graphics` modes (falls back to terminal). Use `--release` for playable frame rates; GPU modes are CPU-bound in debug builds due to the cellular-automaton simulation. The GPU event loop is capped at 60 FPS.
+
+## Architecture Priorities
+
+- **Graphics mode** (`--mode graphics`) is the PRIMARY renderer — colored cells, 8x8 px, 16:9 window
+- **ASCII mode** (`--mode ascii`) is a DEBUG backend — same Vulkan pipeline with glyph atlas
+- **Terminal mode** (`--mode terminal`) is LEGACY — kept for headless/test compatibility
+- **AI observation** uses multi-spectrum ASCII layers via pipe protocol:
+  - `materials` — material type per cell
+  - `temperature` — heat levels encoded as characters
+  - `light` — light intensity per cell
+  - `entities` — entity positions and types only
+  - `density` — material density visualization
+  - `velocity` — entity movement speed and CA activity
+
+## Tape System
+
+```sh
+# Record all spectrums every 10 ticks for 300 ticks
+cargo run --release -- --mode tape --headless-ticks 300 --tape-interval 10 \
+  --tape-output tape.txt --tape-json tape.json
+```
+
+Each tape frame contains:
+- Tick number, depth, kills, score
+- Camera position
+- Player HP, position, entity count
+- All 6 spectrum layers as ASCII text
+
+Pipe protocol spectrum commands:
+- `{"cmd":"get_spectrum","spectrum":"materials","w":80,"h":25}` — single spectrum
+- `{"cmd":"get_all_spectrums","w":80,"h":25}` — all spectrums at once
 
 ## Tests
 

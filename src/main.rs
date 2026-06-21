@@ -41,6 +41,15 @@ struct Cli {
 
     #[arg(long, default_value = "benchmark_results.json")]
     benchmark_output: String,
+
+    #[arg(long, default_value_t = 5)]
+    tape_interval: u32,
+
+    #[arg(long, default_value = "tape.txt")]
+    tape_output: String,
+
+    #[arg(long)]
+    tape_json: Option<String>,
 }
 
 trait GpuRenderer {
@@ -166,6 +175,19 @@ fn main() {
         }
         "benchmark" => {
             run_benchmark_mode(&cli);
+        }
+        "tape" => {
+            if cli.headless_ticks > 0 {
+                ai::run_tape_mode(
+                    cli.headless_ticks,
+                    cli.tape_interval,
+                    &cli.tape_output,
+                    cli.tape_json.as_deref(),
+                );
+            } else {
+                eprintln!("Use --headless-ticks N with --mode tape");
+                std::process::exit(1);
+            }
         }
         _ => {
             eprintln!(
