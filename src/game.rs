@@ -660,10 +660,9 @@ impl Game {
         let px = px as i32;
         let py = py as i32;
         let (pcx, pcy, _, _) = self.grid.chunk_at(px, py);
-        let radius = 3;
+        let radius = 2;
         let chunk_size = self.grid.chunk_size as i32;
 
-        let mut to_generate: Vec<(i32, i32)> = Vec::new();
         for dy in -radius..=radius {
             for dx in -radius..=radius {
                 let cx = pcx + dx;
@@ -675,14 +674,9 @@ impl Game {
                 }
                 self.grid.ensure_chunk(cx, cy);
                 if !self.grid.is_chunk_generated(cx, cy) {
-                    to_generate.push((cx, cy));
+                    WorldGenerator::new(&mut self.ca).generate_chunk(&mut self.grid, cx, cy);
                 }
             }
-        }
-
-        let gen_budget = 2;
-        for &(cx, cy) in to_generate.iter().take(gen_budget) {
-            WorldGenerator::new(&mut self.ca).generate_chunk(&mut self.grid, cx, cy);
         }
 
         if let Some(ref dir) = self.cache_dir {
@@ -727,11 +721,6 @@ impl Game {
     }
 
     fn update_active_chunks(&mut self) {
-        let chunk_size = self.grid.chunk_size as i32;
-        let (px, py) = self.player.center(&self.entities);
-        let pcx = px as i32 / chunk_size;
-        let pcy = py as i32 / chunk_size;
-
         if !self.grid.is_infinite() {
             for e in self.entities.all() {
                 let (cx, cy) = e.center();
@@ -747,21 +736,8 @@ impl Game {
 
         self.grid.deactivate_all();
 
-        for dy in -2..=2 {
-            for dx in -2..=2 {
-                self.grid.set_chunk_active(pcx + dx, pcy + dy, true);
-            }
-        }
-        for e in self.entities.all() {
-            let (cx, cy) = e.center();
-            self.grid.activate_around(cx as i32, cy as i32, 1);
-        }
         for (cx, cy) in self.grid.all_chunk_coords() {
-            if self.grid.get_chunk_dirty(cx, cy).is_some() {
-                if (cx - pcx).abs() <= 1 && (cy - pcy).abs() <= 1 {
-                    self.grid.set_chunk_active(cx, cy, true);
-                }
-            }
+            self.grid.set_chunk_active(cx, cy, true);
         }
     }
 
