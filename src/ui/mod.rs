@@ -77,6 +77,9 @@ impl UiLayer {
     }
 
     pub fn resize(&mut self, w: usize, h: usize) {
+        if self.width == w && self.height == h && !self.cells.is_empty() {
+            return;
+        }
         self.width = w;
         self.height = h;
         self.cells.clear();
@@ -324,8 +327,8 @@ impl UiLayer {
                 let mut g = 0u32;
                 let mut b = 0u32;
                 let mut n = 0u32;
-                for yy in 0..scale {
-                    for xx in 0..scale {
+                for yy in (0..scale).step_by(4) {
+                    for xx in (0..scale).step_by(4) {
                         let cell = grid.get(wx + xx, wy + yy);
                         if cell.material != MaterialId::Empty {
                             let c = cell.fg;

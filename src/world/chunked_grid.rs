@@ -123,7 +123,7 @@ impl ChunkedGrid {
         }
         let key = (cx as i64, cy as i64);
         if !self.chunks.contains_key(&key) {
-            let mut chunk = Chunk::new();
+            let chunk = Chunk::new();
             if let Some(ref dir) = self.cache_dir {
                 let path = chunk_path(dir, self.seed, cx, cy);
                 if path.exists() {

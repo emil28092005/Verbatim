@@ -784,7 +784,13 @@ impl CellularAutomaton {
                         let idx = (ly as usize) * CHUNK_SIZE + (lx as usize);
                         if let Some((radius, color)) = material_light(chunk.cells[idx].material) {
                             sources.push((ox + lx, oy + ly, radius as i32, color));
+                            if sources.len() >= 64 {
+                                break;
+                            }
                         }
+                    }
+                    if sources.len() >= 64 {
+                        break;
                     }
                 }
             }
