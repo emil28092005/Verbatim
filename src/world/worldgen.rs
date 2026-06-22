@@ -5,6 +5,18 @@ use crate::world::cellular::CellularAutomaton;
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunked_grid::ChunkedGrid;
 
+pub const WORLD_SCALE: i32 = 5;
+
+#[inline]
+fn sc(v: i32) -> i32 {
+    v * WORLD_SCALE
+}
+
+#[inline]
+fn scf(v: f32) -> f32 {
+    v * WORLD_SCALE as f32
+}
+
 pub struct WorldGenerator<'a> {
     ca: &'a mut CellularAutomaton,
 }
@@ -78,7 +90,7 @@ impl<'a> WorldGenerator<'a> {
         if grid.get(sx, surface_y + 1).is_empty() {
             grid.set_material(sx, surface_y + 1, MaterialId::Stone);
         }
-        let spawn_y = surface_y - 8;
+        let spawn_y = surface_y - sc(8);
         (sx, spawn_y)
     }
 
@@ -96,7 +108,8 @@ impl<'a> WorldGenerator<'a> {
         if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
             chunk.generated = true;
             chunk.modified = true;
-            chunk.was_modified = true;
+            chunk.was_modified = false;
+            chunk.dirty = None;
         }
     }
 
@@ -114,7 +127,7 @@ impl<'a> WorldGenerator<'a> {
                 }
                 if y == s {
                     grid.set_material(x, y, MaterialId::Grass);
-                } else if y > s + 8 {
+                } else if y > s + sc(8) {
                     grid.set_material(x, y, MaterialId::Stone);
                 } else {
                     grid.set_material(x, y, MaterialId::Dirt);
@@ -141,7 +154,7 @@ impl<'a> WorldGenerator<'a> {
         let pool_count = (1 + depth / 3).min(3) as i32;
         for _ in 0..pool_count {
             let typ = self.random_cave_pool_type(depth);
-            self.place_cave_pool_chunk(grid, cx, cy, typ, 2, 4);
+            self.place_cave_pool_chunk(grid, cx, cy, typ, sc(2), sc(4));
         }
         grid.fill_border(MaterialId::Stone);
     }
@@ -190,7 +203,7 @@ impl<'a> WorldGenerator<'a> {
                         MaterialId::Dirt
                     };
                     grid.set_material(x as i32, y, mat);
-                } else if y > s + 8 {
+                } else if y > s + sc(8) {
                     grid.set_material(x as i32, y, MaterialId::Stone);
                 } else {
                     grid.set_material(x as i32, y, MaterialId::Dirt);
@@ -204,6 +217,16 @@ impl<'a> WorldGenerator<'a> {
         self.place_surface_features(grid, &surface, depth);
 
         grid.fill_border(MaterialId::Stone);
+
+        for cy in 0..grid.chunks_y as i32 {
+            for cx in 0..grid.chunks_x as i32 {
+                grid.set_chunk_dirty(cx, cy, None);
+                if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
+                    chunk.modified = false;
+                    chunk.was_modified = false;
+                }
+            }
+        }
 
         let sx = w / 2;
         let mut surface_y = h - 3;
@@ -233,20 +256,20 @@ impl<'a> WorldGenerator<'a> {
             }
         }
 
-        self.carve_ca_caves(grid, 0.45, 5);
+        self.carve_ca_caves(grid, 0.38, 5);
         self.seal_disconnected_regions(grid);
 
         let pool_count = (2 + depth / 2).min(6) as i32;
         for _ in 0..pool_count {
             let typ = self.random_cave_pool_type(depth);
-            self.place_cave_pool(grid, typ, 3, 5);
+            self.place_cave_pool(grid, typ, sc(3), sc(5));
         }
 
         let stalactites = self.random_range_i32(3, 7);
         for _ in 0..stalactites {
             let x = self.random_range_i32(8, w - 8);
             let y_top = self.random_range_i32(3, 12);
-            let len = self.random_range_i32(3, 9);
+            let len = self.random_range_i32(sc(3), sc(9));
             for dy in 0..len {
                 let y = y_top + dy;
                 if grid.get(x, y).material != MaterialId::Stone {
@@ -257,6 +280,16 @@ impl<'a> WorldGenerator<'a> {
         }
 
         grid.fill_border(MaterialId::Stone);
+
+        for cy in 0..grid.chunks_y as i32 {
+            for cx in 0..grid.chunks_x as i32 {
+                grid.set_chunk_dirty(cx, cy, None);
+                if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
+                    chunk.modified = false;
+                    chunk.was_modified = false;
+                }
+            }
+        }
 
         let spawn = self.find_safe_spawn(grid);
         let stairs = self.find_empty_with_floor(grid, w - 15, h - 15);
@@ -304,6 +337,16 @@ impl<'a> WorldGenerator<'a> {
         }
         self.connect_bsp_rooms(&tree, grid);
         grid.fill_border(MaterialId::Stone);
+
+        for cy in 0..grid.chunks_y as i32 {
+            for cx in 0..grid.chunks_x as i32 {
+                grid.set_chunk_dirty(cx, cy, None);
+                if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
+                    chunk.modified = false;
+                    chunk.was_modified = false;
+                }
+            }
+        }
 
         let spawn_room = rooms[0];
         let spawn_x = spawn_room.x + spawn_room.w / 2;
@@ -358,7 +401,14 @@ impl<'a> WorldGenerator<'a> {
     ) {
         if depth <= 3 {
             let base_y = py + 1;
-            let offsets = [(-6, 1), (6, 1), (-3, -8), (10, 1), (-10, 1), (3, -6)];
+            let offsets = [
+                (sc(-6), sc(1)),
+                (sc(6), sc(1)),
+                (sc(-3), sc(-8)),
+                (sc(10), sc(1)),
+                (sc(-10), sc(1)),
+                (sc(3), sc(-6)),
+            ];
             let types = [
                 ItemType::Sword,
                 ItemType::HealthPotion,
@@ -384,7 +434,7 @@ impl<'a> WorldGenerator<'a> {
         let pool_count = (2 + depth / 2).min(5) as i32;
         for _ in 0..pool_count {
             let typ = self.random_surface_pool_type(depth);
-            self.place_surface_pool(grid, typ, 3, 6);
+            self.place_surface_pool(grid, typ, sc(3), sc(6));
         }
 
         let dune_count = self.random_range_i32(1, 4);
@@ -410,7 +460,7 @@ impl<'a> WorldGenerator<'a> {
         let pool_count = (depth / 2).min(2) as i32;
         for _ in 0..pool_count {
             let typ = self.random_surface_pool_type(depth);
-            self.place_surface_pool_chunk(grid, x0, x1, surface, typ, 2, 4);
+            self.place_surface_pool_chunk(grid, x0, x1, surface, typ, sc(2), sc(4));
         }
 
         let dune_count = self.random_range_i32(0, 2);
@@ -435,16 +485,16 @@ impl<'a> WorldGenerator<'a> {
             if s < 10 {
                 continue;
             }
-            for y in (s - 6)..s {
+            for y in (s - sc(6))..s {
                 if grid.in_bounds(x, y) {
                     grid.set_material(x, y, MaterialId::Wood);
                 }
             }
-            for dy in -2..=0 {
-                for dx in -2..=2 {
-                    if dx * dx + dy * dy <= 5 {
+            for dy in -sc(2)..=0 {
+                for dx in -sc(2)..=sc(2) {
+                    if dx * dx + dy * dy <= sc(5) {
                         let cx = x + dx;
-                        let cy = s - 6 + dy;
+                        let cy = s - sc(6) + dy;
                         if grid.in_bounds(cx, cy) && grid.get(cx, cy).is_empty() {
                             grid.set_material(cx, cy, MaterialId::Grass);
                         }
@@ -539,7 +589,7 @@ impl<'a> WorldGenerator<'a> {
             let lx = self.random_range_i32(4, (x1 - x0 - 4).max(5));
             let x = x0 + lx;
             let s = surface[lx as usize];
-            let width = self.random_range_i32(4, 10);
+            let width = self.random_range_i32(sc(4), sc(10));
             for dx in -width / 2..=width / 2 {
                 let pile = (width / 2 - dx.abs()).max(1) + 1;
                 for dy in 0..pile {
@@ -564,13 +614,22 @@ impl<'a> WorldGenerator<'a> {
             let lx = self.random_range_i32(4, (x1 - x0 - 4).max(5));
             let x = x0 + lx;
             let s = surface[lx as usize];
-            let h = self.random_range_i32(2, 5);
+            let h = self.random_range_i32(sc(2), sc(5));
             for y in (s - h)..s {
                 if grid.in_bounds(x, y) {
                     grid.set_material(x, y, MaterialId::Stone);
                 }
                 if grid.in_bounds(x + 1, y) {
                     grid.set_material(x + 1, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 2, y) {
+                    grid.set_material(x + 2, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 3, y) {
+                    grid.set_material(x + 3, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 4, y) {
+                    grid.set_material(x + 4, y, MaterialId::Stone);
                 }
             }
         }
@@ -584,16 +643,16 @@ impl<'a> WorldGenerator<'a> {
             if s < 10 {
                 continue;
             }
-            for y in (s - 6)..s {
+            for y in (s - sc(6))..s {
                 if grid.in_bounds(x, y) {
                     grid.set_material(x, y, MaterialId::Wood);
                 }
             }
-            for dy in -2..=0 {
-                for dx in -2..=2 {
-                    if dx * dx + dy * dy <= 5 {
+            for dy in -sc(2)..=0 {
+                for dx in -sc(2)..=sc(2) {
+                    if dx * dx + dy * dy <= sc(5) {
                         let cx = x + dx;
-                        let cy = s - 6 + dy;
+                        let cy = s - sc(6) + dy;
                         if grid.in_bounds(cx, cy) && grid.get(cx, cy).is_empty() {
                             grid.set_material(cx, cy, MaterialId::Grass);
                         }
@@ -668,7 +727,7 @@ impl<'a> WorldGenerator<'a> {
         for _ in 0..count {
             let x = self.random_range_i32(15, w - 15);
             let s = surface[x as usize];
-            let width = self.random_range_i32(6, 16);
+            let width = self.random_range_i32(sc(6), sc(16));
             for dx in -width / 2..=width / 2 {
                 let pile = (width / 2 - dx.abs()).max(1) + 1;
                 for dy in 0..pile {
@@ -686,13 +745,22 @@ impl<'a> WorldGenerator<'a> {
         for _ in 0..count {
             let x = self.random_range_i32(10, w - 10);
             let s = surface[x as usize];
-            let h = self.random_range_i32(3, 7);
+            let h = self.random_range_i32(sc(3), sc(7));
             for y in (s - h)..s {
                 if grid.in_bounds(x, y) {
                     grid.set_material(x, y, MaterialId::Stone);
                 }
                 if grid.in_bounds(x + 1, y) {
                     grid.set_material(x + 1, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 2, y) {
+                    grid.set_material(x + 2, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 3, y) {
+                    grid.set_material(x + 3, y, MaterialId::Stone);
+                }
+                if grid.in_bounds(x + 4, y) {
+                    grid.set_material(x + 4, y, MaterialId::Stone);
                 }
             }
         }
@@ -705,7 +773,7 @@ impl<'a> WorldGenerator<'a> {
             let cx = self.random_range_i32(10, w - 10);
             let lower = (h * 2 / 3).max(surface[cx as usize] + 12);
             let cy = self.random_range_i32(lower, h - 10);
-            let r = self.random_range_i32(3, 6);
+            let r = self.random_range_i32(sc(3), sc(6));
             for dy in -r..=r {
                 for dx in -r..=r {
                     if dx * dx + dy * dy <= r * r {
@@ -908,7 +976,7 @@ impl<'a> WorldGenerator<'a> {
     }
 
     fn split_rect(&mut self, rect: Rect) -> Option<(Rect, Rect)> {
-        let min_size = 22;
+        let min_size = sc(9);
         if rect.w < min_size * 2 || rect.h < min_size * 2 {
             return None;
         }
@@ -946,8 +1014,8 @@ impl<'a> WorldGenerator<'a> {
     }
 
     fn carve_room_rect(&mut self, rect: Rect) -> Rect {
-        let min_w = 9;
-        let min_h = 9;
+        let min_w = sc(4);
+        let min_h = sc(4);
         let max_pad_x = ((rect.w - min_w) / 2).max(1);
         let max_pad_y = ((rect.h - min_h) / 2).max(1);
         let pad_x = self.random_range_i32(1, max_pad_x + 1);
@@ -1012,10 +1080,11 @@ impl<'a> WorldGenerator<'a> {
     fn carve_l_corridor(&mut self, grid: &mut ChunkedGrid, a: &Rect, b: &Rect) {
         let c1 = (a.x + a.w / 2, a.y + a.h / 2);
         let c2 = (b.x + b.w / 2, b.y + b.h / 2);
+        let cw = sc(2) / 2;
         let x0 = c1.0.min(c2.0);
         let x1 = c1.0.max(c2.0);
         for x in x0..=x1 {
-            for dy in 0..2 {
+            for dy in 0..cw {
                 if grid.in_bounds(x, c1.1 + dy) {
                     grid.set(x, c1.1 + dy, Cell::empty());
                 }
@@ -1024,7 +1093,7 @@ impl<'a> WorldGenerator<'a> {
         let y0 = c1.1.min(c2.1);
         let y1 = c1.1.max(c2.1);
         for y in y0..=y1 {
-            for dx in 0..2 {
+            for dx in 0..cw {
                 if grid.in_bounds(c2.0 + dx, y) {
                     grid.set(c2.0 + dx, y, Cell::empty());
                 }
@@ -1081,7 +1150,7 @@ impl<'a> WorldGenerator<'a> {
     }
 
     fn vertical_clear(&self, grid: &ChunkedGrid, x: i32, y: i32) -> bool {
-        for dy in -3..=2 {
+        for dy in -4..=2 {
             if !grid.in_bounds(x, y + dy) || !grid.get(x, y + dy).is_empty() {
                 return false;
             }
@@ -1113,18 +1182,18 @@ impl<'a> WorldGenerator<'a> {
     }
 
     fn surface_height(&mut self, x: i32, h: i32) -> i32 {
-        let base = (h - 3) - ((x as f32 * 0.08).sin() * 4.0) as i32;
-        let detail = ((x as f32 * 0.23).sin() * 2.0) as i32;
-        let micro = ((x as f32 * 0.57).sin() * 1.0) as i32;
+        let base = (h - 3) - ((x as f32 * 0.08).sin() * scf(4.0)) as i32;
+        let detail = ((x as f32 * 0.23).sin() * scf(2.0)) as i32;
+        let micro = ((x as f32 * 0.57).sin() * scf(1.0)) as i32;
         (base + detail + micro).max(10).min(h - 3)
     }
 
     const SURFACE_BASE_Y: i32 = 120;
 
     fn surface_height_world(&mut self, x: i32) -> i32 {
-        let base = Self::SURFACE_BASE_Y - ((x as f32 * 0.08).sin() * 4.0) as i32;
-        let detail = ((x as f32 * 0.23).sin() * 2.0) as i32;
-        let micro = ((x as f32 * 0.57).sin() * 1.0) as i32;
+        let base = Self::SURFACE_BASE_Y - ((x as f32 * 0.08).sin() * scf(4.0)) as i32;
+        let detail = ((x as f32 * 0.23).sin() * scf(2.0)) as i32;
+        let micro = ((x as f32 * 0.57).sin() * scf(1.0)) as i32;
         (base + detail + micro).max(10)
     }
 

@@ -123,6 +123,12 @@ impl CellularAutomaton {
                 continue;
             }
             let (min_x, min_y, max_x, max_y) = dirty.unwrap();
+            let dw = max_x - min_x + 1;
+            let dh = max_y - min_y + 1;
+            if dw * dh > 4096 {
+                grid.set_chunk_dirty(cx, cy, None);
+                continue;
+            }
 
             grid.set_chunk_dirty(cx, cy, None);
 
@@ -502,6 +508,9 @@ impl CellularAutomaton {
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
+            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+                continue;
+            }
             for y in min_y..=max_y {
                 for x in min_x..=max_x {
                     let cell = grid.get(x, y);
@@ -553,6 +562,9 @@ impl CellularAutomaton {
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
+            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+                continue;
+            }
             for y in min_y..=max_y {
                 for x in min_x..=max_x {
                     let (gt, gd) = grid.get_gas(x, y);
@@ -623,6 +635,9 @@ impl CellularAutomaton {
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
+            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+                continue;
+            }
             for y in min_y..=max_y {
                 for x in min_x..=max_x {
                     let cell = grid.get(x, y);

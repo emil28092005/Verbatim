@@ -739,12 +739,6 @@ impl Game {
         let dirty_radius = if self.grid.is_infinite() { 1 } else { 100000 };
 
         for (cx, cy) in self.grid.all_chunk_coords() {
-            if self.grid.is_chunk_modified(cx, cy) {
-                if (cx - pcx).abs() <= dirty_radius && (cy - pcy).abs() <= dirty_radius {
-                    self.grid
-                        .activate_around(cx * chunk_size, cy * chunk_size, 1);
-                }
-            }
             if self.grid.get_chunk_dirty(cx, cy).is_some() {
                 if (cx - pcx).abs() <= dirty_radius && (cy - pcy).abs() <= dirty_radius {
                     self.grid.set_chunk_active(cx, cy, true);
@@ -1481,21 +1475,23 @@ impl Game {
                     }
                     let x = near_x + dx;
                     let y = near_y + dy;
-                    if !self.grid.in_bounds(x, y) || !self.grid.in_bounds(x, y - 3) {
+                    let sc = crate::world::worldgen::WORLD_SCALE;
+                    let clear_h = 8;
+                    if !self.grid.in_bounds(x, y) || !self.grid.in_bounds(x, y - clear_h) {
                         continue;
                     }
                     if !self.grid.get(x, y).is_empty() || !self.grid.get(x, y + 1).is_solid() {
                         continue;
                     }
                     let mut clear = true;
-                    for k in -3..=0 {
+                    for k in -clear_h..=0 {
                         if !self.grid.get(x, y + k).is_empty() {
                             clear = false;
                             break;
                         }
                     }
                     if clear {
-                        return Some((x, y - 3));
+                        return Some((x, y - clear_h));
                     }
                 }
             }
@@ -1516,7 +1512,7 @@ impl Game {
         }
         let search_top = 0;
         let search_bottom = if self.grid.is_infinite() {
-            py as i32 + 50
+            py as i32 + crate::world::worldgen::WORLD_SCALE * 50
         } else {
             self.grid.height as i32 - 3
         };
@@ -1548,9 +1544,13 @@ impl Game {
         }
 
         let (px, py) = self.player.center(&self.entities);
-        let offset = if px as i32 % 2 == 0 { 15 } else { -15 };
+        let offset = if px as i32 % 2 == 0 {
+            crate::world::worldgen::WORLD_SCALE * 15
+        } else {
+            -(crate::world::worldgen::WORLD_SCALE * 15)
+        };
         let spawn = if self.depth <= 3 {
-            self.find_surface_spawn(px, py, offset, 5)
+            self.find_surface_spawn(px, py, offset, crate::world::worldgen::WORLD_SCALE * 5)
         } else {
             self.find_spawn_location(px as i32 + offset, py as i32, 3)
         };
@@ -1579,9 +1579,13 @@ impl Game {
         }
 
         let (px, py) = self.player.center(&self.entities);
-        let offset = if px as i32 % 2 == 0 { -18 } else { 18 };
+        let offset = if px as i32 % 2 == 0 {
+            -(crate::world::worldgen::WORLD_SCALE * 18)
+        } else {
+            crate::world::worldgen::WORLD_SCALE * 18
+        };
         let spawn = if self.depth <= 3 {
-            self.find_surface_spawn(px, py, offset, 3)
+            self.find_surface_spawn(px, py, offset, crate::world::worldgen::WORLD_SCALE * 3)
         } else {
             self.find_spawn_location(px as i32 + offset, py as i32, 3)
         };

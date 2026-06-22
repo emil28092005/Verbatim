@@ -180,7 +180,7 @@ Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `
 - **Status effects** — `update_status_effects()` applies damage for poison/bleeding/fire and cancels movement for frozen; effects expire when their timer reaches zero.
 - **Random seeding** — `Game::new()` uses a fixed seed for tests/AI sessions; `Game::new_random()` seeds from system time and is used by terminal/ascii/graphics modes. Cached worlds are keyed by seed.
 - **Dirty rects** — `ChunkedGrid::mark_dirty(x, y)` expands the chunk's dirty rect to include (x,y) ±1 and propagates to neighbor chunks at boundaries. `cells_swap` and `set_cell_index` call `mark_dirty` automatically. `set` and `set_material` also call `mark_dirty`. The CA step clears each chunk's dirty rect at the start of processing and rebuilds it from cell modifications during processing.
-- **Activation radius** — Entity chunk activation radius is 1 (3x3 = 9 chunks). Chunks with dirty rects are also activated. This covers the viewport while minimizing active cell count.
+- **World scale**: `WORLD_SCALE = 5` in `worldgen.rs` — all world features (trees, pools, walls, dunes, rooms, corridors, terrain amplitude) are multiplied by this factor. Change this constant to adjust entity-to-world size ratio.
 
 ## Module Layout
 
