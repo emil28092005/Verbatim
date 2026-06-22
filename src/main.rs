@@ -72,7 +72,6 @@ trait GpuRenderer {
     );
     fn grid_w(&self) -> usize;
     fn grid_h(&self) -> usize;
-    fn adjust_zoom(&mut self, delta: i32);
     fn cell_pixel_size(&self) -> u32;
 }
 
@@ -99,9 +98,6 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
     }
     fn grid_h(&self) -> usize {
         verbatim::render::vulkan::VulkanRenderer::grid_h(self)
-    }
-    fn adjust_zoom(&mut self, delta: i32) {
-        verbatim::render::vulkan::VulkanRenderer::adjust_zoom(self, delta)
     }
     fn cell_pixel_size(&self) -> u32 {
         verbatim::render::vulkan::VulkanRenderer::cell_pixel_size(self)
@@ -131,9 +127,6 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
     }
     fn grid_h(&self) -> usize {
         verbatim::render::graphics::GraphicsRenderer::grid_h(self)
-    }
-    fn adjust_zoom(&mut self, delta: i32) {
-        verbatim::render::graphics::GraphicsRenderer::adjust_zoom(self, delta)
     }
     fn cell_pixel_size(&self) -> u32 {
         verbatim::render::graphics::GraphicsRenderer::cell_pixel_size(self)
@@ -325,13 +318,6 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
 
                     if input.toggle_audio {
                         game.audio.toggle();
-                    }
-
-                    if input.zoom_in {
-                        renderer.adjust_zoom(-2);
-                    }
-                    if input.zoom_out {
-                        renderer.adjust_zoom(2);
                     }
 
                     if input.jump {

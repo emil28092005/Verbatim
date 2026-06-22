@@ -12,8 +12,6 @@ use crate::world::grid::{MAX_WORLD_H, MAX_WORLD_W};
 const CHAR_W: u32 = 8;
 const CHAR_H: u32 = 8;
 const UI_CELL_SIZE: u32 = 2;
-const MIN_CHAR: u32 = 4;
-const MAX_CHAR: u32 = 24;
 const ATLAS_COLS: usize = 16;
 const ATLAS_ROWS: usize = 8;
 const ATLAS_W: u32 = (ATLAS_COLS as u32) * CHAR_W;
@@ -84,7 +82,6 @@ struct PushConstants {
 pub struct VulkanRenderer {
     grid_w: usize,
     grid_h: usize,
-    char_size: u32,
 
     entry: ash::Entry,
     instance: ash::Instance,
@@ -279,7 +276,6 @@ impl VulkanRenderer {
         Ok(Self {
             grid_w,
             grid_h,
-            char_size: CHAR_W,
             entry,
             instance,
             surface,
@@ -712,18 +708,8 @@ impl VulkanRenderer {
         self.grid_h
     }
 
-    pub fn adjust_zoom(&mut self, delta: i32) {
-        let new_size =
-            (self.char_size as i32 + delta).clamp(MIN_CHAR as i32, MAX_CHAR as i32) as u32;
-        if new_size == self.char_size {
-            return;
-        }
-        self.char_size = new_size;
-        self.check_resize();
-    }
-
     pub fn cell_pixel_size(&self) -> u32 {
-        self.char_size
+        CHAR_W
     }
 
     fn check_resize(&mut self) {
@@ -846,8 +832,8 @@ impl VulkanRenderer {
                 .expect("cmd_bufs")
         };
 
-        let new_grid_w = (new_extent.width / self.char_size) as usize;
-        let new_grid_h = (new_extent.height / self.char_size) as usize;
+        let new_grid_w = (new_extent.width / CHAR_W) as usize;
+        let new_grid_h = (new_extent.height / CHAR_H) as usize;
         let new_count = new_grid_w * new_grid_h;
 
         if new_count != self.instance_count {

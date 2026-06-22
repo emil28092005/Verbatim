@@ -88,7 +88,6 @@ GPU (`--mode ascii` / `--mode graphics`):
 - `r` — drop first inventory item
 - `1`–`0` / `x` — paint material brush
 - `y` / `u` / `i` / `o` — move camera offset
-- `+` / `-` — zoom in / out
 - `m` — toggle audio
 - `q` / `esc` — quit
 
