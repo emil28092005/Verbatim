@@ -10,50 +10,60 @@
 | System | Status | Details |
 |--------|--------|---------|
 | Cellular automaton | Working | 14 materials: sand, water, stone, lava, wood, flesh, bone, steam, fire, acid, smoke, grass, dirt, empty |
-| Rigid entities | Working | AABB collider, slope stepping, 27 sub-bodies (5x5 + arm), player + goblins |
+| Multi-layer world | Working | Temperature, gas (smoke/poison/CO2/steam), pressure, world-space light — parallel per-chunk arrays |
+| Rigid entities | Working | AABB collider, slope stepping, 70 sub-bodies, player + goblins + slimes |
 | Ragdoll corpses | Working | Verlet constraints, death = rigid→ragdoll transition with inherited velocity |
 | Terminal renderer | Working | Full terminal size, ANSI truecolor, diff-based rendering |
-| ASCII renderer (Vulkan) | Working | ash + winit, instanced rendering, glyph atlas, 16x16 square cells, adaptive viewport |
+| ASCII renderer (Vulkan) | Working | ash + winit, instanced rendering, glyph atlas, 8x8 cells, adaptive viewport |
 | Graphics renderer (Vulkan) | Working | ash + winit, colored cells (no glyphs), each material = unique base color, adaptive viewport |
-| AI pipe protocol | Working | JSON stdin/stdout, 16 commands, full state export |
-| Test framework | Working | 109 Rust tests + 14 JSON scenarios, all passing |
+| AI pipe protocol | Working | JSON stdin/stdout, 16 commands, full state export, 8 spectrums (materials/temp/light/entities/density/velocity/gas/pressure) |
+| Audio | Working | 15 procedurally generated sounds via rodio, overlapping playback, ambient scanning, M to toggle |
+| UI layer | Working | Procedurally scalable font, flat Vec array, health bars, HUD, minimap, inventory overlay, character panel |
+| Test framework | Working | 185 Rust tests + 14 JSON scenarios, all passing |
 | Replay system | Working | Seeded determinism, record/playback, play_until_tick |
-| World generation | Working | Procedural chunk-based biomes: surface (noise), caves (CA), dungeons (BSP); vertical biome progression by chunk Y; 12500×12500 continuous world; chunk streaming + cache |
+| World generation | Working | ×5 scale: trees 30 cells, pools r20, BSP rooms 20×20, corridors 5 wide; chunk streaming + cache |
 | Cross-platform | Working | Windows/Linux/macOS via winit + ash_window, no platform-specific code |
-| Adaptive viewport | Working | Window resize → more/fewer cells visible, cells stay 16x16 pixels |
-| Per-cell color (reality layer) | Working | Each cell stores fg/bg color inline, no registry lookup in render path |
+| Adaptive viewport | Working | Window resize → more/fewer cells visible, cells stay 8x8 pixels |
+| Per-cell color | Working | Each cell stores fg/bg color inline, no registry lookup in render path |
+| Performance | Working | 130-150 FPS (graphics), uniform tick rate across all chunks |
 
 ### Architecture
 
 ```
-Source of truth: `ChunkedGrid` of `Cell` structs
+Source of truth: `ChunkedGrid` of `Cell` structs with parallel layer arrays
 - Bounded mode: `Vec<Chunk>` for 250x250 test/AI grids
-- Infinite mode: `HashMap<(i64, i64), Chunk>` for continuous 12500x12500 cell worlds
-- 64x64 chunks, dirty rects, active flags, per-chunk persistence
-- Chunk streaming: load/generate around player, save/unload distant chunks
+- Infinite mode: `HashMap<(i64,i64), Chunk>` for continuous worlds
+- 64x64 chunks, dirty rects, all loaded chunks active every tick
+- Multi-layer: temps (f32), pressure (u8), gas_type+density (u8×2), light ([u8;3])
+- Cell: 9 bytes (material + variant + fg/bg, no temp)
+- Serialization: VWM1 multi-section format, backward compat with old 12-byte
+
+World scale: WORLD_SCALE=5, adjustable via single constant
+Surface: multi-octave sine noise, wide rolling hills (~260 cell wavelength)
 
 Three entity types:
   1. Cellular  — materials in grid, per-cell CA rules
   2. Rigid     — alive entities, AABB collider, slope stepping, single velocity
   3. Ragdoll   — corpses, loose Verlet bodies, independent physics
 
-Game loop: fixed 60Hz timestep
-  Physics tick: CA step → rigid update (slope step) → ragdoll update → damage
-  Render: terminal (ANSI) / ascii (Vulkan glyphs) / graphics (Vulkan cells) / pipe (JSON) / headless (file)
+Game loop: fixed 60Hz timestep, uniform across all chunks
+  Physics tick: CA step → heat_transfer → gas_step → pressure_step → light_step
+                → entity updates → combat → status effects → gas damage
+  Render: terminal (ANSI) / ascii (Vulkan glyphs) / graphics (Vulkan cells) / pipe (JSON)
 
-Three render modes:
-  --mode terminal  → pure ANSI ASCII in terminal
-  --mode ascii     → Vulkan window with ASCII characters (glyph atlas)
-  --mode graphics  → Vulkan window with colored cells (no glyphs, material base colors)
+Audio: 15 embedded WAV sounds via rodio, overlapping playback, ambient scanning
+UI: flat Vec array, procedurally scalable font, non-destructive overlay
 ```
 
 ### Numbers
 
-- ~6700 lines Rust
-- 171 integration tests, 14 JSON scenarios
-- 40+ git commits
+- ~9000 lines Rust
+- 185 integration tests, 14 JSON scenarios
+- 50+ git commits
 - 0 compiler warnings (excluding winit deprecation notices)
 - Cross-platform: Windows/Linux/macOS
+- 15 embedded sound effects
+- 130-150 FPS (graphics mode, release, ×5 world scale)
 
 ---
 
@@ -71,17 +81,17 @@ loop is: aim → shoot → projectile travels → hits enemy → damage/kill.
 - [x] Knockback: damage applies velocity impulse to rigid body center
 - [x] Goblin AI: move toward player, attack when adjacent
 - [x] Slime AI: jump toward player, contact damage
-- [ ] **Projectile system**: lightweight rigid bodies (arrows, fireballs, magic bolts)
+- [x] **Projectile system**: lightweight rigid bodies (arrows, fireballs, magic bolts)
   - Player shoots with directional input (mouse aim or movement-direction)
   - Projectile = small AABB, velocity, damage, lifetime
   - On hit with entity: deal damage, destroy projectile
   - On hit with solid cell: stop/destroy
   - Fireball: ignites materials it touches (Noita-style material interaction)
   - Magic bolt: pure damage, no material effect
-- [ ] Health bars in render (colored indicator above entity)
-- [ ] Death → ragdoll → corpse decomposition (flesh cells drop into grid over time)
-- [ ] Material interaction with entities: entity walks through fire → ignites, acid → dissolves
-- [ ] Goblin AI: flee when low HP
+- [x] Health bars in render (colored indicator above entity)
+- [x] Death → ragdoll → corpse decomposition (flesh cells drop into grid over time)
+- [x] Material interaction with entities: entity walks through fire → ignites, acid → dissolves
+- [x] Goblin AI: flee when low HP
 
 **Tests needed:**
 - Projectile travels and deals damage on hit
@@ -106,34 +116,34 @@ Render pipeline per frame:
   3. Present to screen
 ```
 
-- [ ] `UiLayer` struct: sparse map of (screen_x, screen_y) → (char, fg_color, bg_color)
-  - UI elements write to this map, not to the grid
+- [x] `UiLayer` struct: flat `Vec<Option<UiCell>>` array for O(1) cell access
+  - UI elements write to this array, not to the grid
   - Renderer composites: if UiLayer has a cell at (x,y), it overrides the world cell visually
   - World state is never modified by UI
-- [ ] Health bar: colored bar above player entity, shows current/max HP
+- [x] Health bar: colored bar above player entity, shows current/max HP
   - ████░░░░ style, colored green→yellow→red by HP ratio
   - Positioned relative to player's screen position, scrolls with camera
-- [ ] Entity labels: small text above/below entities (name, level for RPG)
-- [ ] Status effect icons: burning 🔥, poisoned, frozen — shown next to entity
-- [ ] HUD bar (bottom of screen, non-destructive):
+- [x] Entity labels: small text above/below entities (name, level for RPG)
+- [x] Status effect icons: burning, poisoned, frozen — shown next to entity
+- [x] HUD bar (bottom of screen, non-destructive):
   - HP: ████████░░ 80/100
   - Material brush: [Sand] (current selected)
   - Tick: 1234  Depth: 1
   - FPS counter (debug mode)
 - [ ] Tooltip on hover: when cursor is over a cell, show material name + temperature
-- [ ] Message log (top of screen, scrolling): "Goblin hits you for 10 damage"
+- [x] Message log (top of screen, scrolling): "Goblin hits you for 10 damage"
   - Last N messages, older ones fade (dimmer color)
-- [ ] Inventory overlay (toggle with 'i'): semi-transparent panel, doesn't modify world
+- [x] Inventory overlay (toggle with 'i'/Tab): semi-transparent panel, doesn't modify world
   - List of items, selected highlight, weight/value display
   - Opens/closes without affecting simulation
 - [ ] Menu system (pause, settings, save/load): full-screen overlay with border
   - Game loop pauses (or continues in background), UI captures input
-- [ ] Minimap (corner of screen): compressed world view, explored areas only
+- [x] Minimap (corner of screen): compressed world view, explored areas only
   - Each minimap cell = 5x5 world cells, averaged material color
   - Player position marker, entity dots
 - [ ] Crosshair/targeting: when aiming projectiles, shows trajectory preview
-- [ ] Damage numbers: floating text above entities when hit, rises and fades
-- [ ] Screen-edge indicators: arrows pointing to off-screen entities of interest
+- [x] Damage numbers: floating text above entities when hit, rises and fades
+- [x] Screen-edge indicators: arrows pointing to off-screen entities of interest
 
 **Key principle: UI layer NEVER writes to grid, entities, or any game state.
 It reads state and renders visuals on top. This keeps the source of truth clean
@@ -180,18 +190,18 @@ instanced quads with UI texture coordinates. Transparent background, drawn on to
 
 **Goal: character progression, inventory, abilities**
 
-- [ ] Stats: strength, agility, toughness, willpower — affect damage, speed, HP, etc.
-- [ ] Inventory system: items as data structs, pick up by walking over, drop with key
-- [ ] Equipment: weapon affects melee damage/range, armor affects damage reduction
-- [ ] Items in world: weapons, potions, scrolls, food — rendered as distinct ASCII chars
+- [x] Stats: strength, agility, toughness, willpower — affect damage, speed, HP, etc.
+- [x] Inventory system: items as data structs, pick up by walking over, drop with key
+- [x] Equipment: weapon affects melee damage/range, armor affects damage reduction
+- [x] Items in world: weapons, potions, scrolls, food — rendered as distinct ASCII chars
 - [ ] Mutations (Caves of Qud style): modify entity properties
   - "Silicon skin" → entity material becomes Stone, immune to acid
   - "Flame body" → entity emits fire cells, immune to fire
   - "Liquid form" → entity can squeeze through 1-cell gaps
   - "Multiple arms" → extra attack, can hold more items
-- [ ] XP and leveling: kill entities → gain XP → level up → choose mutation
+- [x] XP and leveling: kill entities → gain XP → level up → choose mutation
 - [ ] Skills: active abilities on cooldown (dash, stomp, material blast)
-- [ ] Status effects: burning, poisoned, frozen, bleeding — each with tick effect
+- [x] Status effects: burning, poisoned, frozen, bleeding — each with tick effect
 - [ ] Dialogue: talk to NPCs, simple text tree
 
 **Tests needed:**
@@ -277,17 +287,17 @@ Two distinct render modes, both GPU-accelerated via Vulkan:
 - [ ] Boss entity: large rigid body (10x10), multiple attack patterns
 - [ ] Books/readable items: lore text displayed in terminal
 - [ ] Crafting: combine materials to create new ones (water + dirt = mud)
-- [ ] Sound: procedural audio via terminal bell or optional ALSA
+- [x] Sound: procedural audio via rodio, 15 embedded WAV sounds, overlapping playback
 - [ ] Save/load: full game state to file (grid + entities + player + inventory)
 - [ ] Death screen: stats summary, cause of death
 - [ ] Tutorial: first-time controls overlay
 - [ ] Difficulty scaling: deeper levels = stronger enemies
 
-### Phase 6: Advanced Physics
+### Phase 6: Advanced Physics (DONE)
 
 **Goal: deeper Noita-style material simulation**
 
-- [ ] Multi-layer world: separate grid layers for material, temperature, pressure, gas/air, light
+- [x] Multi-layer world: separate grid layers for material, temperature, pressure, gas/air, light
   - Air layer: gas flow, ventilation in caves, gas accumulates at ceiling, displaced by fire
   - Pressure layer: liquids have pressure, flow through pipes and U-bends
   - Temperature layer: proper heat diffusion, materials melt/freeze at thresholds
@@ -547,10 +557,12 @@ assets/
 |-----------|---------|--------|
 | 0.1 (done) | Core engine: CA, rigid, ragdoll, terminal, AI pipe | June 2026 |
 | 0.2 (done) | Vulkan ASCII + graphics renderers, adaptive viewport, per-cell color, slope stepping | June 2026 |
-| 0.3 | Combat, goblin AI, projectiles, corpse decomposition | July 2026 |
-| 0.35 | UI layer: health bar, HUD, message log, minimap, inventory overlay | July 2026 |
-| 0.4 | Chunks, biomes, dungeon gen, camera zoom | August 2026 |
-| 0.5 | RPG layer: stats, inventory, mutations, XP | October 2026 |
+| 0.3 (done) | Combat, goblin AI, projectiles, corpse decomposition | June 2026 |
+| 0.35 (done) | UI layer: health bar, HUD, message log, minimap, inventory overlay, scalable font | June 2026 |
+| 0.4 (done) | Chunks, biomes, dungeon gen, world scale ×5, chunk streaming + cache | June 2026 |
+| 0.45 (done) | RPG layer: stats, inventory, XP, status effects, items | June 2026 |
+| 0.5 (done) | Multi-layer world: temp, gas, pressure, light + audio system | June 2026 |
+| 0.55 (done) | Performance: uniform tick rate, 130-150 FPS, fire chain fix | June 2026 |
 | 0.6 | Lighting/particles/textures (Phase 4b) | December 2026 |
 | 0.7 | Multi-layer world: air, pressure, temperature, light as separate grids | Feb 2027 |
 | 0.8 | AI agent: LLM + RL bridge, agent recording | April 2027 |

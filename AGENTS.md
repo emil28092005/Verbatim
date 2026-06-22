@@ -27,10 +27,12 @@ Rust edition 2024, requires rustc >= 1.96. Vulkan 1.2+ required for `ascii`/`gra
 - **AI observation** uses multi-spectrum ASCII layers via pipe protocol:
   - `materials` — material type per cell
   - `temperature` — heat levels encoded as characters
-  - `light` — light intensity per cell
+  - `light` — light intensity per cell (world-space fallback)
   - `entities` — entity positions and types only
   - `density` — material density visualization
   - `velocity` — entity movement speed and CA activity
+  - `gas` — gas type + density per cell (NEW)
+  - `pressure` — pressure levels per cell (NEW)
 
 ## Tape System
 
@@ -44,7 +46,7 @@ Each tape frame contains:
 - Tick number, depth, kills, score
 - Camera position
 - Player HP, position, entity count
-- All 6 spectrum layers as ASCII text
+- All 8 spectrum layers as ASCII text
 
 Pipe protocol spectrum commands:
 - `{"cmd":"get_spectrum","spectrum":"materials","w":80,"h":25}` — single spectrum
@@ -107,7 +109,7 @@ SPV files are committed. `include_bytes!` embeds them at compile time.
 **Source of truth**: `ChunkedGrid` of `Cell` structs with parallel per-chunk layer arrays. Replaces the old fixed-size `Grid` with dual storage:
 
 - **Bounded mode**: `Vec<Chunk>` for deterministic 250x250 test/AI grids.
-- **Infinite mode**: `HashMap<(i64, i64), Chunk>` for continuous 12500x12500 cell (100000x100000 px) Noita-scale worlds.
+- **Infinite mode**: `HashMap<(i64, i64), Chunk>` for continuous Noita-scale worlds.
 
 Main game (`--mode terminal`, `--mode ascii`, `--mode graphics`) uses the infinite mode. Each `Cell` stores `material`, `fg`/`bg` color, `variant` inline (9 bytes, no temp). Temperature, gas, pressure, and light are stored in parallel arrays per chunk. Chunks are 64x64 cells with `active`, `modified`, `was_modified`, `generated`, and `dirty` flags.
 
@@ -120,9 +122,11 @@ Main game (`--mode terminal`, `--mode ascii`, `--mode graphics`) uses the infini
 
 Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `grid.get_pressure()`/`set_pressure()`, `grid.get_light()`/`set_light()`. All `set_*` methods call `mark_dirty()` (shared dirty rect). `cells_swap` swaps all layers. `set_material` also sets `default_temp()`.
 
-**Simulation steps** per `fixed_update()`: `apply_gas_damage()` → `ca.step()` (material CA + heat_transfer + gas_step + pressure_step + light_step) → entity updates → combat → status effects. The `ca.step()` saves pre-clear dirty rects and passes them to layer steps so heat/gas/pressure can diffuse beyond CA-active cells.
+**Simulation steps** per `fixed_update()`: `apply_gas_damage()` → `ca.step()` (material CA + heat_transfer + gas_step + pressure_step + light_step) → entity updates → combat → status effects. The `ca.step()` saves pre-clear dirty rects and passes them to layer steps so heat/gas/pressure can diffuse beyond CA-active cells. All loaded chunks are activated every tick — uniform simulation rate across the world.
 
 **Serialization**: Multi-section chunk format with `VWM1` magic header. Sections: cells (8 bytes × 4096), temps (4 × 4096), gas (2 × 4096), pressure (1 × 4096), light (3 × 4096). Old 12-byte format auto-detected and loaded for backward compat.
+
+**Audio** (`src/audio/mod.rs`): `AudioEngine` using `rodio` for WAV playback. 15 procedurally generated sounds (jump, shoot, hit, explosion, death, pickup, descend, powerup, step, lava_bubble, acid_sizzle, water_splash, fire_crackle, ui_click, goblin_growl) embedded via `include_bytes!`. Each sound creates its own `Sink` + `detach()` for overlapping playback. Ambient sounds scan 15-cell radius around player. `M` key toggles audio. Gracefully degrades when no audio device available.
 
 **Four entity kinds**: `Player`, `Goblin`, `Slime`, `Corpse`. Three physics types: cellular (CA materials in grid), rigid (alive entities, AABB + slope stepping), ragdoll (corpses, Verlet constraints).
 
@@ -149,11 +153,11 @@ Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `
 
 **Items & inventory**: `Item` (weapon, armor, consumable), `ItemManager`, and inventory/equipment slots on `Player`. Items spawn in the world and are picked up on contact. `Game::use_item(0)` equips weapons/armor or consumes potions; `Game::drop_item(0)` returns an item to the world. Equipped weapon adds damage bonus to projectiles; equipped armor reduces enemy contact damage.
 
-**UI layer**: `ui::UiLayer` overlays non-destructive UI on all renderers. Health bars above entities, bottom-line HUD, scrolling message log, floating damage numbers, screen-edge indicators, death screen, entity labels, status icons, minimap, and a character panel. UI is drawn unlit on top of the world. In GPU (`ascii`/`graphics`) and capture modes the UI is rendered as a separate 2x2 pixel-per-cell pass; terminal mode renders UI at full character size.
+**UI layer**: `ui::UiLayer` overlays non-destructive UI on all renderers. Uses a flat `Vec<Option<UiCell>>` array (not HashMap) for O(1) cell access. `font_scale` auto-computed from screen height — text, panels, health bars, and minimap scale proportionally. Health bars above entities, bottom-line HUD, scrolling message log, floating damage numbers, screen-edge indicators, death screen, entity labels, status icons, minimap (sampled with step_by(4)), and a character panel. UI is drawn unlit on top of the world. In GPU (`ascii`/`graphics`) and capture modes the UI is rendered as a separate 2x2 pixel-per-cell pass; terminal mode renders UI at full character size.
 
-**Chunk system**: `ChunkedGrid` is divided into 64x64 `Chunk`s. Each chunk tracks `active`, `modified`, `was_modified`, `generated`, and `dirty` (an optional bounding rect of cells that need processing). `save_chunk(path, cx, cy)` and `load_chunk(path, cx, cy)` serialize chunk cells via 12-byte binary format. Cell serialization is handled by `Cell::to_bytes()` / `Cell::from_bytes()`. `Chunk::generated` is set when a chunk is generated or loaded from cache, preventing accidental regeneration.
+**Chunk system**: `ChunkedGrid` is divided into 64x64 `Chunk`s. Each chunk tracks `active`, `modified`, `was_modified`, `generated`, and `dirty` (an optional bounding rect of cells that need processing). `save_chunk(path, cx, cy)` and `load_chunk(path, cx, cy)` serialize chunk data via multi-section `VWM1` binary format. Cell serialization is handled by `Cell::to_bytes()` / `Cell::from_bytes()` (8 bytes/cell). `Chunk::generated` is set when a chunk is generated or loaded from cache, preventing accidental regeneration.
 
-**Dirty rect optimization** (Noita-style): Each chunk maintains a `dirty: Option<(i32, i32, i32, i32)>` bounding rect of cells that need CA processing. When a cell changes via `set`, `set_material`, `cells_swap`, or `set_cell_index`, the chunk's dirty rect is expanded to include that cell ±1 (for neighbor influence). The CA step only iterates cells within dirty rects, skipping chunks with no dirty rect entirely. Liquids and gases (water, lava, acid, steam, fire, smoke) re-mark themselves dirty after processing so they continue to flow and react. Sand and other solids can sleep when at rest. `heat_transfer` only processes cells within dirty rects and reuses its temperature buffer across frames. `update_active_chunks` activates chunks with dirty rects in addition to chunks near entities. This reduces CA step time from ~500μs to ~25μs on a 250x250 grid.
+**Dirty rect optimization** (Noita-style): Each chunk maintains a `dirty: Option<(i32, i32, i32, i32)>` bounding rect of cells that need CA processing. When a cell changes via `set`, `set_material`, `cells_swap`, or `set_cell_index`, the chunk's dirty rect is expanded to include that cell ±1 (for neighbor influence). The CA step only iterates cells within dirty rects, skipping chunks with no dirty rect entirely. Liquids and gases (water, lava, acid, steam, fire, smoke) re-mark themselves dirty after processing so they continue to flow and react. Sand and other solids can sleep when at rest. All dirty rects are processed fully — no size limits — ensuring uniform simulation across chunks. `update_active_chunks` activates all loaded chunks every tick for consistent physics.
 
 **World cache**: main game seeds are saved in `Game::seed` and written to `cache/worlds/<seed>/`. Each cached world stores per-chunk binary files plus a `meta.json` with player spawn and item placement. `Game::init_world()` loads the cache if it exists; otherwise it generates the spawn region and saves it. This makes Noita-scale worlds load instantly after the first visit.
 
@@ -162,7 +166,7 @@ Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `
 - `2 <= cy < 6` — caves (stone, CA-carved empty space, lava/water/acid pools)
 - `cy >= 6` — dungeon (BSP rooms, corridors, stone walls)
 
-**Chunk streaming**: `Game::stream_chunks()` is called every `fixed_update`. It loads cached chunks (or generates new ones) in a 3-chunk radius around the player, saves modified chunks beyond that radius, and unloads distant chunks. Streaming is active for infinite grids and for bounded grids larger than 2048×2048; test/AI 250×250 grids skip streaming.
+**Chunk streaming**: `Game::stream_chunks()` is called every `fixed_update`. It loads cached chunks (or generates new ones) in a 2-chunk radius around the player, saves modified chunks beyond that radius every 10 ticks (1 chunk at a time), and unloads distant chunks every 120 ticks. All loaded chunks are activated for uniform simulation. Streaming is active for infinite grids; test/AI 250×250 grids skip streaming.
 
 **Vertical descent**: `MaterialId::Stairs` is a solid feature material. Player stands on stairs and presses `>` to descend. `Game::descend()` increments depth, resets the world, and respawns the player at the top. HUD shows current depth.
 
@@ -181,6 +185,9 @@ Layer access via `grid.get_temp()`/`set_temp()`, `grid.get_gas()`/`set_gas()`, `
 - **Random seeding** — `Game::new()` uses a fixed seed for tests/AI sessions; `Game::new_random()` seeds from system time and is used by terminal/ascii/graphics modes. Cached worlds are keyed by seed.
 - **Dirty rects** — `ChunkedGrid::mark_dirty(x, y)` expands the chunk's dirty rect to include (x,y) ±1 and propagates to neighbor chunks at boundaries. `cells_swap` and `set_cell_index` call `mark_dirty` automatically. `set` and `set_material` also call `mark_dirty`. The CA step clears each chunk's dirty rect at the start of processing and rebuilds it from cell modifications during processing.
 - **World scale**: `WORLD_SCALE = 5` in `worldgen.rs` — all world features (trees, pools, walls, dunes, rooms, corridors, terrain amplitude) are multiplied by this factor. Change this constant to adjust entity-to-world size ratio.
+- **Surface terrain**: Multi-octave sine noise with low frequencies (base 0.012, detail 0.04, micro 0.11) scaled by `WORLD_SCALE`. Produces wide rolling hills (~260 cell wavelength) instead of narrow peaks.
+- **Uniform tick rate**: All loaded chunks simulate every tick — no chunk is frozen or partially updated. `cells_swap` uses `split_at_mut` for direct chunk array access in bounded mode.
+- **Fire propagation**: Newly ignited cells get `updated_this_tick = true` to prevent chain reactions within a single tick. Fire spreads 1 cell/tick (linear, not exponential).
 
 ## Module Layout
 
@@ -190,12 +197,13 @@ src/
   lib.rs               # pub mod declarations
   game.rs              # Game struct, world gen, fixed_update, collision, combat, slime AI
   input.rs             # Terminal input (crossterm, InputHandler) — terminal mode only
+  audio/mod.rs         # AudioEngine (rodio), 15 embedded WAV sounds, ambient scanning
   world/               # Cell, MaterialId, MaterialRegistry, ChunkedGrid, Grid (legacy), Chunk, CellularAutomaton, WorldGenerator, WorldCache
-  physics/             # VerletSolver, SubBody (with color field), Constraint, resolve_grid_collision
+  physics/             # VerletSolver, SubBody (with color field), Constraint, resolve_grid_collision, ProjectileManager
   entity/              # Entity (rigid/ragdoll), EntityManager, Player, BodyTemplate, Item, ItemManager
-  render/              # terminal.rs, vulkan.rs (ASCII), graphics.rs (cells), lighting.rs, window_input.rs
-  ai/                  # GameSession, AiAction, pipe protocol, replay, scenarios
-  ui/                  # UiLayer, HUD, messages, damage numbers, edge indicators
+  render/              # terminal.rs, vulkan.rs (ASCII), graphics.rs (cells), lighting.rs, window_input.rs, capture.rs
+  ai/                  # GameSession, AiAction, pipe protocol, replay, scenarios, spectrum
+  ui/                  # UiLayer (flat Vec), HUD, messages, damage numbers, edge indicators, scalable font
 ```
 
 ## PLAN.md
