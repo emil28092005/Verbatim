@@ -127,14 +127,6 @@ impl CellularAutomaton {
                 None => continue,
             };
             let (min_x, min_y, max_x, max_y) = dirty;
-            let dw = max_x - min_x + 1;
-            let dh = max_y - min_y + 1;
-            if dw * dh > 2048 {
-                grid.set_chunk_dirty(cx, cy, None);
-                grid.mark_dirty(min_x + dw / 4, min_y + dh / 4);
-                grid.mark_dirty(max_x - dw / 4, max_y - dh / 4);
-                continue;
-            }
 
             grid.set_chunk_dirty(cx, cy, None);
 
@@ -523,9 +515,6 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 2048 {
-                continue;
-            }
             let ox = cx * cs;
             let oy = cy * cs;
             let mut edge_temps: Vec<((i32, i32), f32)> = Vec::new();
@@ -615,9 +604,6 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 2048 {
-                continue;
-            }
             let ox = cx * cs;
             let oy = cy * cs;
             let chunk = match grid.get_chunk_mut(cx, cy) {
@@ -721,9 +707,6 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 2048 {
-                continue;
-            }
             let ox = cx * cs;
             let oy = cy * cs;
             let chunk = match grid.get_chunk_mut(cx, cy) {

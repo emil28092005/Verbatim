@@ -1,17 +1,17 @@
 {
   "mode": "graphics",
   "ticks": 600,
-  "total_time_ms": 4351.8,
-  "avg_fps": 137.9,
-  "avg_frame_time_ms": 7.22,
-  "p99_frame_time_ms": 18.27,
-  "min_frame_time_ms": 5.37,
+  "total_time_ms": 4229.7,
+  "avg_fps": 141.9,
+  "avg_frame_time_ms": 7.02,
+  "p99_frame_time_ms": 17.35,
+  "min_frame_time_ms": 5.45,
   "subsystems": {
-    "ca_step_avg_us": 2536,
-    "ca_step_p99_us": 12072,
-    "ca_step_min_us": 736,
-    "render_avg_us": 3941,
-    "render_p99_us": 5859,
-    "render_min_us": 3281
+    "ca_step_avg_us": 2425,
+    "ca_step_p99_us": 11400,
+    "ca_step_min_us": 600,
+    "render_avg_us": 3863,
+    "render_p99_us": 5805,
+    "render_min_us": 3218
   }
 }

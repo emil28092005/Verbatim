@@ -437,12 +437,6 @@ impl ChunkedGrid {
         }
         let (cx1, cy1, lx1, ly1) = self.chunk_at(x1, y1);
         let (cx2, cy2, lx2, ly2) = self.chunk_at(x2, y2);
-        let t1 = self.get_temp(x1, y1);
-        let t2 = self.get_temp(x2, y2);
-        let p1 = self.get_pressure(x1, y1);
-        let p2 = self.get_pressure(x2, y2);
-        let g1 = self.get_gas(x1, y1);
-        let g2 = self.get_gas(x2, y2);
         if self.is_bounded() {
             let idx1 = self.chunk_index(cx1, cy1);
             let idx2 = self.chunk_index(cx2, cy2);
@@ -463,28 +457,38 @@ impl ChunkedGrid {
                     }
                 }
                 (Some(i1), Some(i2)) => {
-                    let c1 = self.get(x1, y1);
-                    let c2 = self.get(x2, y2);
-                    if let Some(chunk) = self.chunks_vec.get_mut(i1) {
-                        let ci = (ly1 as usize) * self.chunk_size + (lx1 as usize);
-                        chunk.cells[ci] = c2;
-                        chunk.temps[ci] = t2;
-                        chunk.pressure[ci] = p2;
-                        chunk.gas_type[ci] = g2.0;
-                        chunk.gas_density[ci] = g2.1;
-                        chunk.cells[ci].updated_this_tick = true;
-                        chunk.modified = true;
-                        chunk.mark_dirty(lx1, ly1);
-                    }
-                    if let Some(chunk) = self.chunks_vec.get_mut(i2) {
-                        let ci = (ly2 as usize) * self.chunk_size + (lx2 as usize);
-                        chunk.cells[ci] = c1;
-                        chunk.temps[ci] = t1;
-                        chunk.pressure[ci] = p1;
-                        chunk.gas_type[ci] = g1.0;
-                        chunk.gas_density[ci] = g1.1;
-                        chunk.modified = true;
-                        chunk.mark_dirty(lx2, ly2);
+                    let (lo, hi) = if i1 < i2 { (i1, i2) } else { (i2, i1) };
+                    let (left, right) = self.chunks_vec.split_at_mut(hi);
+                    let (ch_lo, ch_hi) = if i1 < i2 {
+                        (left.get_mut(lo), right.first_mut())
+                    } else {
+                        (right.first_mut(), left.get_mut(lo))
+                    };
+                    if let (Some(ch1), Some(ch2)) = (ch_lo, ch_hi) {
+                        let ci1 = (ly1 as usize) * self.chunk_size + (lx1 as usize);
+                        let ci2 = (ly2 as usize) * self.chunk_size + (lx2 as usize);
+                        let (c1, t1, p1, gt1, gd1) = (
+                            ch1.cells[ci1],
+                            ch1.temps[ci1],
+                            ch1.pressure[ci1],
+                            ch1.gas_type[ci1],
+                            ch1.gas_density[ci1],
+                        );
+                        ch1.cells[ci1] = ch2.cells[ci2];
+                        ch1.temps[ci1] = ch2.temps[ci2];
+                        ch1.pressure[ci1] = ch2.pressure[ci2];
+                        ch1.gas_type[ci1] = ch2.gas_type[ci2];
+                        ch1.gas_density[ci1] = ch2.gas_density[ci2];
+                        ch1.cells[ci1].updated_this_tick = true;
+                        ch1.modified = true;
+                        ch1.mark_dirty(lx1, ly1);
+                        ch2.cells[ci2] = c1;
+                        ch2.temps[ci2] = t1;
+                        ch2.pressure[ci2] = p1;
+                        ch2.gas_type[ci2] = gt1;
+                        ch2.gas_density[ci2] = gd1;
+                        ch2.modified = true;
+                        ch2.mark_dirty(lx2, ly2);
                     }
                 }
                 _ => {}
@@ -506,6 +510,12 @@ impl ChunkedGrid {
         } else {
             let c1 = self.get(x1, y1);
             let c2 = self.get(x2, y2);
+            let t1 = self.get_temp(x1, y1);
+            let t2 = self.get_temp(x2, y2);
+            let p1 = self.get_pressure(x1, y1);
+            let p2 = self.get_pressure(x2, y2);
+            let g1 = self.get_gas(x1, y1);
+            let g2 = self.get_gas(x2, y2);
             self.set(x1, y1, c2);
             self.set_temp(x1, y1, t2);
             self.set_pressure(x1, y1, p2);
