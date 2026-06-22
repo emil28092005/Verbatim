@@ -92,37 +92,43 @@ impl CellularAutomaton {
         let mut active = grid.active_chunks();
         active.sort_by(|(ax, ay), (bx, by)| by.cmp(ay).then(bx.cmp(ax)));
 
-        let mut pre_dirty: Vec<((i32, i32), (i32, i32, i32, i32))> = Vec::new();
-        for (cx, cy) in &active {
-            if let Some(d) = grid.get_chunk_dirty(*cx, *cy) {
-                pre_dirty.push(((*cx, *cy), d));
+        let mut pre_dirty: std::collections::HashMap<(i32, i32), (i32, i32, i32, i32)> =
+            std::collections::HashMap::new();
+        for &(cx, cy) in &active {
+            if let Some(d) = grid.get_chunk_dirty(cx, cy) {
+                pre_dirty.insert((cx, cy), d);
             }
         }
 
-        for (cx, cy) in &active {
-            let dirty = grid.get_chunk_dirty(*cx, *cy);
-            if dirty.is_none() {
-                continue;
-            }
-            let (min_x, min_y, max_x, max_y) = dirty.unwrap();
-
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let mut cell = grid.get(x, y);
-                    if cell.updated_this_tick {
-                        cell.updated_this_tick = false;
-                        grid.set(x, y, cell);
+        for &(cx, cy) in &active {
+            let dirty = match grid.get_chunk_dirty(cx, cy) {
+                Some(d) => d,
+                None => continue,
+            };
+            let (min_x, min_y, max_x, max_y) = dirty;
+            let cs = grid.chunk_size as i32;
+            let ox = cx * cs;
+            let oy = cy * cs;
+            if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
+                for y in min_y..=max_y {
+                    for x in min_x..=max_x {
+                        let lx = x - ox;
+                        let ly = y - oy;
+                        if lx >= 0 && lx < cs && ly >= 0 && ly < cs {
+                            let idx = (ly as usize) * CHUNK_SIZE + (lx as usize);
+                            chunk.cells[idx].updated_this_tick = false;
+                        }
                     }
                 }
             }
         }
 
-        for (cx, cy) in active {
-            let dirty = grid.get_chunk_dirty(cx, cy);
-            if dirty.is_none() {
-                continue;
-            }
-            let (min_x, min_y, max_x, max_y) = dirty.unwrap();
+        for &(cx, cy) in &active {
+            let dirty = match grid.get_chunk_dirty(cx, cy) {
+                Some(d) => d,
+                None => continue,
+            };
+            let (min_x, min_y, max_x, max_y) = dirty;
             let dw = max_x - min_x + 1;
             let dh = max_y - min_y + 1;
             if dw * dh > 4096 {
@@ -145,10 +151,10 @@ impl CellularAutomaton {
             }
         }
 
-        self.heat_transfer(grid, &pre_dirty);
-        self.gas_step(grid, &pre_dirty);
-        self.pressure_step(grid, &pre_dirty);
-        self.light_step(grid);
+        self.heat_transfer(grid, &active, &pre_dirty);
+        self.gas_step(grid, &active, &pre_dirty);
+        self.pressure_step(grid, &active, &pre_dirty);
+        self.light_step(grid, &active);
         self.tick += 1;
     }
 
@@ -492,51 +498,89 @@ impl CellularAutomaton {
     fn heat_transfer(
         &mut self,
         grid: &mut ChunkedGrid,
-        pre_dirty: &[((i32, i32), (i32, i32, i32, i32))],
+        active: &[(i32, i32)],
+        pre_dirty: &std::collections::HashMap<(i32, i32), (i32, i32, i32, i32)>,
     ) {
         let reg = crate::world::material::MaterialRegistry::instance();
-        let active = grid.active_chunks();
-        for (cx, cy) in active {
+        let cs = CHUNK_SIZE as i32;
+        for &(cx, cy) in active {
             let dirty = grid.get_chunk_dirty(cx, cy);
-            let pre = pre_dirty
-                .iter()
-                .find(|(c, _)| *c == (cx, cy))
-                .map(|(_, d)| *d);
+            let pre = pre_dirty.get(&(cx, cy)).copied();
             let (min_x, min_y, max_x, max_y) = match (dirty, pre) {
                 (Some(d), Some(p)) => (d.0.min(p.0), d.1.min(p.1), d.2.max(p.2), d.3.max(p.3)),
                 (Some(d), None) => d,
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
-            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+            let w = max_x - min_x + 1;
+            let h = max_y - min_y + 1;
+            if w * h > 4096 {
                 continue;
             }
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let cell = grid.get(x, y);
-                    if cell.is_empty() {
+            let ox = cx * cs;
+            let oy = cy * cs;
+            let mut edge_temps: Vec<((i32, i32), f32)> = Vec::new();
+            if min_x < ox || max_x >= ox + cs || min_y < oy || max_y >= oy + cs {
+                for y in (min_y - 1)..=(max_y + 1) {
+                    for x in (min_x - 1)..=(max_x + 1) {
+                        let lx = x - ox;
+                        let ly = y - oy;
+                        if lx < 0 || lx >= cs || ly < 0 || ly >= cs {
+                            edge_temps.push(((x, y), grid.get_temp(x, y)));
+                        }
+                    }
+                }
+            }
+            let chunk = match grid.get_chunk_mut(cx, cy) {
+                Some(c) => c,
+                None => continue,
+            };
+            for ly in 0..h {
+                let wy = min_y + ly - oy;
+                if wy < 0 || wy >= cs {
+                    continue;
+                }
+                for lx in 0..w {
+                    let wx = min_x + lx - ox;
+                    if wx < 0 || wx >= cs {
                         continue;
                     }
-                    let mat = reg.get(cell.material);
+                    let idx = (wy as usize) * CHUNK_SIZE + (wx as usize);
+                    let mat = reg.get(chunk.cells[idx].material);
                     let k = mat.heat_conductivity;
                     if k == 0.0 {
                         continue;
                     }
-                    let cur_temp = grid.get_temp(x, y);
-                    let mut sum = 0.0;
-                    let mut count = 0;
+                    let cur = chunk.temps[idx];
+                    let mut sum = 0.0f32;
+                    let mut count = 0u32;
                     for &(dx, dy) in &NEIGHBORS4 {
-                        let nx = x + dx;
-                        let ny = y + dy;
-                        sum += grid.get_temp(nx, ny);
+                        let nx = wx + dx;
+                        let ny = wy + dy;
+                        if nx < 0 || nx >= cs || ny < 0 || ny >= cs {
+                            let wx2 = ox + nx;
+                            let wy2 = oy + ny;
+                            if let Some((_, t)) = edge_temps
+                                .iter()
+                                .find(|((ex, ey), _)| *ex == wx2 && *ey == wy2)
+                            {
+                                sum += *t;
+                            } else {
+                                sum += 20.0;
+                            }
+                            count += 1;
+                            continue;
+                        }
+                        let ni = (ny as usize) * CHUNK_SIZE + (nx as usize);
+                        sum += chunk.temps[ni];
                         count += 1;
                     }
                     if count > 0 {
                         let avg = sum / count as f32;
-                        let new_temp = cur_temp + (avg - cur_temp) * k * 0.1;
-                        if (new_temp - cur_temp).abs() > 0.01 {
-                            grid.set_temp(x, y, new_temp);
-                            grid.mark_dirty(x, y);
+                        let new_temp = cur + (avg - cur) * k * 0.1;
+                        if (new_temp - cur).abs() > 0.01 {
+                            chunk.temps[idx] = new_temp;
+                            chunk.mark_dirty(wx, wy);
                         }
                     }
                 }
@@ -547,62 +591,95 @@ impl CellularAutomaton {
     fn gas_step(
         &mut self,
         grid: &mut ChunkedGrid,
-        pre_dirty: &[((i32, i32), (i32, i32, i32, i32))],
+        active: &[(i32, i32)],
+        pre_dirty: &std::collections::HashMap<(i32, i32), (i32, i32, i32, i32)>,
     ) {
-        let active = grid.active_chunks();
-        for (cx, cy) in active {
+        let cs = CHUNK_SIZE as i32;
+        for &(cx, cy) in active {
             let dirty = grid.get_chunk_dirty(cx, cy);
-            let pre = pre_dirty
-                .iter()
-                .find(|(c, _)| *c == (cx, cy))
-                .map(|(_, d)| *d);
+            let pre = pre_dirty.get(&(cx, cy)).copied();
             let (min_x, min_y, max_x, max_y) = match (dirty, pre) {
                 (Some(d), Some(p)) => (d.0.min(p.0), d.1.min(p.1), d.2.max(p.2), d.3.max(p.3)),
                 (Some(d), None) => d,
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
-            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+            let w = max_x - min_x + 1;
+            let h = max_y - min_y + 1;
+            if w * h > 4096 {
                 continue;
             }
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let (gt, gd) = grid.get_gas(x, y);
+            let ox = cx * cs;
+            let oy = cy * cs;
+            let chunk = match grid.get_chunk_mut(cx, cy) {
+                Some(c) => c,
+                None => continue,
+            };
+            let has_gas = chunk.gas_density.iter().any(|&d| d > 0);
+            if !has_gas {
+                continue;
+            }
+            for ly in 0..h {
+                let wy = min_y + ly - oy;
+                if wy < 0 || wy >= cs {
+                    continue;
+                }
+                for lx in 0..w {
+                    let wx = min_x + lx - ox;
+                    if wx < 0 || wx >= cs {
+                        continue;
+                    }
+                    let idx = (wy as usize) * CHUNK_SIZE + (wx as usize);
+                    let gt = chunk.gas_type[idx];
+                    let gd = chunk.gas_density[idx];
                     if gd == 0 {
                         continue;
                     }
 
-                    if gt == 4 && grid.get_temp(x, y) < 80.0 {
-                        let mut new = grid.get(x, y);
+                    if gt == 4 && chunk.temps[idx] < 80.0 {
+                        let mut new = chunk.cells[idx];
                         new.material = MaterialId::Water;
-                        grid.set(x, y, new);
-                        grid.set_temp(x, y, 50.0);
-                        grid.set_gas(x, y, 0, 0);
+                        chunk.cells[idx] = new;
+                        chunk.temps[idx] = 50.0;
+                        chunk.gas_type[idx] = 0;
+                        chunk.gas_density[idx] = 0;
+                        chunk.modified = true;
+                        chunk.mark_dirty(wx, wy);
                         continue;
                     }
 
-                    if y > 0 {
-                        let above = grid.get(x, y - 1);
-                        if above.is_empty() || above.is_gas() {
-                            let (agt, agd) = grid.get_gas(x, y - 1);
+                    if wy > 0 {
+                        let above_idx = ((wy - 1) as usize) * CHUNK_SIZE + (wx as usize);
+                        let above_cell = chunk.cells[above_idx];
+                        if above_cell.is_empty() || above_cell.is_gas() {
+                            let agd = chunk.gas_density[above_idx];
                             if agd < gd {
-                                grid.set_gas(x, y - 1, gt, gd);
-                                grid.set_gas(x, y, agt, agd);
+                                chunk.gas_type[above_idx] = gt;
+                                chunk.gas_density[above_idx] = gd;
+                                chunk.gas_type[idx] = 0;
+                                chunk.gas_density[idx] = 0;
+                                chunk.mark_dirty(wx, wy);
+                                chunk.mark_dirty(wx, wy - 1);
                                 continue;
                             }
                         }
                     }
 
-                    let dir = if self.rand_bool() { 1 } else { -1 };
+                    let dir = if self.rand_bool() { 1i32 } else { -1i32 };
                     for &d in &[dir, -dir] {
-                        if grid.in_bounds(x + d, y) {
-                            let side = grid.get(x + d, y);
-                            if side.is_empty() || side.is_gas() {
-                                let (sgt, sgd) = grid.get_gas(x + d, y);
+                        let nx = wx + d;
+                        if nx >= 0 && nx < cs {
+                            let side_cell = chunk.cells[(wy as usize) * CHUNK_SIZE + (nx as usize)];
+                            if side_cell.is_empty() || side_cell.is_gas() {
+                                let ni = (wy as usize) * CHUNK_SIZE + (nx as usize);
+                                let sgd = chunk.gas_density[ni];
                                 if sgd < gd.saturating_sub(5) {
                                     let avg = (gd + sgd) / 2;
-                                    grid.set_gas(x + d, y, gt, avg);
-                                    grid.set_gas(x, y, gt, gd.saturating_sub(avg - sgd));
+                                    chunk.gas_type[ni] = gt;
+                                    chunk.gas_density[ni] = avg;
+                                    chunk.gas_density[idx] = gd.saturating_sub(avg - sgd);
+                                    chunk.mark_dirty(wx, wy);
+                                    chunk.mark_dirty(nx, wy);
                                     break;
                                 }
                             }
@@ -610,7 +687,7 @@ impl CellularAutomaton {
                     }
 
                     if (gt == 1 || gt == 2) && gd > 0 && self.rand() % 120 == 0 {
-                        grid.set_gas(x, y, gt, gd.saturating_sub(1));
+                        chunk.gas_density[idx] = gd.saturating_sub(1);
                     }
                 }
             }
@@ -620,51 +697,70 @@ impl CellularAutomaton {
     fn pressure_step(
         &mut self,
         grid: &mut ChunkedGrid,
-        pre_dirty: &[((i32, i32), (i32, i32, i32, i32))],
+        active: &[(i32, i32)],
+        pre_dirty: &std::collections::HashMap<(i32, i32), (i32, i32, i32, i32)>,
     ) {
-        let active = grid.active_chunks();
-        for (cx, cy) in active {
+        let cs = CHUNK_SIZE as i32;
+        for &(cx, cy) in active {
             let dirty = grid.get_chunk_dirty(cx, cy);
-            let pre = pre_dirty
-                .iter()
-                .find(|(c, _)| *c == (cx, cy))
-                .map(|(_, d)| *d);
+            let pre = pre_dirty.get(&(cx, cy)).copied();
             let (min_x, min_y, max_x, max_y) = match (dirty, pre) {
                 (Some(d), Some(p)) => (d.0.min(p.0), d.1.min(p.1), d.2.max(p.2), d.3.max(p.3)),
                 (Some(d), None) => d,
                 (None, Some(p)) => p,
                 (None, None) => continue,
             };
-            if (max_x - min_x + 1) * (max_y - min_y + 1) > 4096 {
+            let w = max_x - min_x + 1;
+            let h = max_y - min_y + 1;
+            if w * h > 4096 {
                 continue;
             }
-            for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let cell = grid.get(x, y);
-                    if cell.is_solid() {
+            let ox = cx * cs;
+            let oy = cy * cs;
+            let chunk = match grid.get_chunk_mut(cx, cy) {
+                Some(c) => c,
+                None => continue,
+            };
+            let needs_pressure = chunk.pressure.iter().any(|&p| p != 128);
+            if !needs_pressure {
+                continue;
+            }
+            for ly in 0..h {
+                let wy = min_y + ly - oy;
+                if wy < 0 || wy >= cs {
+                    continue;
+                }
+                for lx in 0..w {
+                    let wx = min_x + lx - ox;
+                    if wx < 0 || wx >= cs {
                         continue;
                     }
-                    let cur_p = grid.get_pressure(x, y) as i32;
+                    let idx = (wy as usize) * CHUNK_SIZE + (wx as usize);
+                    if chunk.cells[idx].is_solid() {
+                        continue;
+                    }
+                    let cur_p = chunk.pressure[idx] as i32;
                     let mut sum = 0i32;
                     let mut count = 0i32;
                     for &(dx, dy) in &NEIGHBORS4 {
-                        let nx = x + dx;
-                        let ny = y + dy;
-                        if !grid.in_bounds(nx, ny) {
+                        let nx = wx + dx;
+                        let ny = wy + dy;
+                        if nx < 0 || nx >= cs || ny < 0 || ny >= cs {
                             continue;
                         }
-                        let n = grid.get(nx, ny);
-                        if n.is_solid() {
+                        let ni = (ny as usize) * CHUNK_SIZE + (nx as usize);
+                        if chunk.cells[ni].is_solid() {
                             continue;
                         }
-                        sum += grid.get_pressure(nx, ny) as i32;
+                        sum += chunk.pressure[ni] as i32;
                         count += 1;
                     }
                     if count > 0 {
                         let avg = sum / count;
                         let new_p = cur_p + (avg - cur_p) / 8;
                         if new_p != cur_p {
-                            grid.set_pressure(x, y, new_p.clamp(0, 255) as u8);
+                            chunk.pressure[idx] = new_p.clamp(0, 255) as u8;
+                            chunk.mark_dirty(wx, wy);
                         }
                     }
                 }
@@ -672,58 +768,67 @@ impl CellularAutomaton {
         }
     }
 
-    fn light_step(&mut self, grid: &mut ChunkedGrid) {
+    fn light_step(&mut self, grid: &mut ChunkedGrid, active: &[(i32, i32)]) {
         self.light_tick += 1;
-        if self.light_tick % 10 != 0 {
+        if self.light_tick % 20 != 0 {
             return;
         }
-
-        let active = grid.active_chunks();
         let cs = CHUNK_SIZE as i32;
-
-        for &(cx, cy) in &active {
+        let mut sources: Vec<(i32, i32, i32, [u8; 3])> = Vec::new();
+        for &(cx, cy) in active {
+            let ox = cx * cs;
+            let oy = cy * cs;
+            if let Some(chunk) = grid.get_chunk(cx, cy) {
+                for ly in 0..cs {
+                    for lx in 0..cs {
+                        let idx = (ly as usize) * CHUNK_SIZE + (lx as usize);
+                        if let Some((radius, color)) = material_light(chunk.cells[idx].material) {
+                            sources.push((ox + lx, oy + ly, radius as i32, color));
+                        }
+                    }
+                }
+            }
+        }
+        if sources.is_empty() {
+            for &(cx, cy) in active {
+                if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
+                    for l in chunk.light.iter_mut() {
+                        *l = [0, 0, 0];
+                    }
+                }
+            }
+            return;
+        }
+        for &(cx, cy) in active {
             if let Some(chunk) = grid.get_chunk_mut(cx, cy) {
                 for l in chunk.light.iter_mut() {
                     *l = [0, 0, 0];
                 }
             }
         }
-
-        for &(cx, cy) in &active {
-            let ox = cx * cs;
-            let oy = cy * cs;
-            for ly in 0..cs {
-                for lx in 0..cs {
-                    let wx = ox + lx;
-                    let wy = oy + ly;
-                    let cell = grid.get(wx, wy);
-                    if let Some(src) = material_light(cell.material) {
-                        let radius = src.0 as i32;
-                        let color = src.1;
-                        for dy in -radius..=radius {
-                            for dx in -radius..=radius {
-                                let tx = wx + dx;
-                                let ty = wy + dy;
-                                if !grid.in_bounds(tx, ty) {
-                                    continue;
-                                }
-                                let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                                if dist > radius as f32 {
-                                    continue;
-                                }
-                                if !line_of_sight(grid, wx, wy, tx, ty) {
-                                    continue;
-                                }
-                                let t = 1.0 - dist / radius as f32;
-                                let atten = t * t;
-                                let cur = grid.get_light(tx, ty);
-                                let nr = (cur[0] as f32 + color[0] as f32 * atten).min(255.0) as u8;
-                                let ng = (cur[1] as f32 + color[1] as f32 * atten).min(255.0) as u8;
-                                let nb = (cur[2] as f32 + color[2] as f32 * atten).min(255.0) as u8;
-                                grid.set_light(tx, ty, [nr, ng, nb]);
-                            }
-                        }
+        for &(sx, sy, radius, color) in &sources {
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    let tx = sx + dx;
+                    let ty = sy + dy;
+                    if !grid.in_bounds(tx, ty) {
+                        continue;
                     }
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq > radius * radius {
+                        continue;
+                    }
+                    let dist = (dist_sq as f32).sqrt();
+                    if !line_of_sight(grid, sx, sy, tx, ty) {
+                        continue;
+                    }
+                    let t = 1.0 - dist / radius as f32;
+                    let atten = t * t;
+                    let cur = grid.get_light(tx, ty);
+                    let nr = (cur[0] as f32 + color[0] as f32 * atten).min(255.0) as u8;
+                    let ng = (cur[1] as f32 + color[1] as f32 * atten).min(255.0) as u8;
+                    let nb = (cur[2] as f32 + color[2] as f32 * atten).min(255.0) as u8;
+                    grid.set_light(tx, ty, [nr, ng, nb]);
                 }
             }
         }
@@ -732,8 +837,8 @@ impl CellularAutomaton {
 
 fn material_light(mat: MaterialId) -> Option<(u32, [u8; 3])> {
     match mat {
-        MaterialId::Lava => Some((25, [255, 120, 30])),
-        MaterialId::Fire => Some((15, [255, 180, 60])),
+        MaterialId::Lava => Some((12, [255, 120, 30])),
+        MaterialId::Fire => Some((6, [255, 180, 60])),
         _ => None,
     }
 }

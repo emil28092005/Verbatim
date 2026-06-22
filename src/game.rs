@@ -676,19 +676,21 @@ impl Game {
         }
 
         if let Some(ref dir) = self.cache_dir {
-            if self.tick % 60 == 0 {
-                let save_radius = radius + 2;
-                for (cx, cy) in self.grid.all_chunk_coords() {
+            let save_radius = radius + 2;
+            let to_save: Vec<(i32, i32)> = self
+                .grid
+                .all_chunk_coords()
+                .into_iter()
+                .filter(|(cx, cy)| {
                     let dx = (cx - pcx).abs();
                     let dy = (cy - pcy).abs();
-                    if dx > save_radius || dy > save_radius {
-                        if self.grid.is_chunk_modified(cx, cy) {
-                            let path =
-                                crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
-                            let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
-                        }
-                    }
-                }
+                    (dx > save_radius || dy > save_radius) && self.grid.is_chunk_modified(*cx, *cy)
+                })
+                .collect();
+            let save_idx = (self.tick as usize) % 3;
+            if let Some(&(cx, cy)) = to_save.get(save_idx % to_save.len().max(1)) {
+                let path = crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
+                let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
             }
         }
 
