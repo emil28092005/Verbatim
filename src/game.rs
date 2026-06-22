@@ -357,6 +357,7 @@ impl Game {
         let ui_h = (vh as i32) * crate::ui::UI_SCALE;
         let fs = ((ui_h / 200).max(2)).min(6) as i32;
         self.ui.set_font_scale(fs);
+        self.ui.resize(ui_w as usize, ui_h as usize);
 
         let player = self.player.entity(&self.entities).cloned();
         let brush = self

@@ -53,6 +53,7 @@ fn depth_shown_in_hud() {
     let mut ui = verbatim::ui::UiLayer::new();
     let screen_w = 320;
     let screen_h = 100;
+    ui.resize(screen_w, screen_h);
     ui.draw_hud(
         screen_w,
         screen_h,

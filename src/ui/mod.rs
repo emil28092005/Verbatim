@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::entity::entity::{Entity, EntityKind};
 use crate::world::cell::MaterialId;
 use crate::world::chunked_grid::ChunkedGrid;
@@ -17,7 +15,10 @@ pub struct UiCell {
 }
 
 pub struct UiLayer {
-    cells: HashMap<(i32, i32), UiCell>,
+    cells: Vec<Option<UiCell>>,
+    width: usize,
+    height: usize,
+    dirty_keys: Vec<(i32, i32)>,
     messages: Vec<(String, u32)>,
     damage_numbers: Vec<DamageNumber>,
     font_scale: i32,
@@ -35,7 +36,10 @@ pub struct DamageNumber {
 impl UiLayer {
     pub fn new() -> Self {
         Self {
-            cells: HashMap::new(),
+            cells: Vec::new(),
+            width: 0,
+            height: 0,
+            dirty_keys: Vec::new(),
             messages: Vec::new(),
             damage_numbers: Vec::new(),
             font_scale: 2,
@@ -61,7 +65,10 @@ impl UiLayer {
     }
 
     pub fn clear(&mut self) {
-        self.cells.clear();
+        for c in self.cells.iter_mut() {
+            *c = None;
+        }
+        self.dirty_keys.clear();
         self.damage_numbers.retain(|d| d.life > 0);
         for d in &mut self.damage_numbers {
             d.y -= 0.1;
@@ -69,28 +76,53 @@ impl UiLayer {
         }
     }
 
+    pub fn resize(&mut self, w: usize, h: usize) {
+        self.width = w;
+        self.height = h;
+        self.cells.clear();
+        self.cells.resize(w * h, None);
+        self.dirty_keys.clear();
+    }
+
+    #[inline]
+    fn idx(&self, x: i32, y: i32) -> Option<usize> {
+        if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
+            return None;
+        }
+        Some(y as usize * self.width + x as usize)
+    }
+
     pub fn set(&mut self, x: i32, y: i32, ch: char, fg: [u8; 3], bg: [u8; 3]) {
-        self.cells.insert(
-            (x, y),
-            UiCell {
+        if let Some(i) = self.idx(x, y) {
+            let was_none = self.cells[i].is_none();
+            self.cells[i] = Some(UiCell {
                 ch,
                 fg,
                 bg,
                 alpha: 255,
-            },
-        );
+            });
+            if was_none {
+                self.dirty_keys.push((x, y));
+            }
+        }
     }
 
     pub fn set_alpha(&mut self, x: i32, y: i32, ch: char, fg: [u8; 3], bg: [u8; 3], alpha: u8) {
-        self.cells.insert((x, y), UiCell { ch, fg, bg, alpha });
+        if let Some(i) = self.idx(x, y) {
+            let was_none = self.cells[i].is_none();
+            self.cells[i] = Some(UiCell { ch, fg, bg, alpha });
+            if was_none {
+                self.dirty_keys.push((x, y));
+            }
+        }
     }
 
     pub fn get(&self, x: i32, y: i32) -> Option<&UiCell> {
-        self.cells.get(&(x, y))
+        self.idx(x, y).and_then(|i| self.cells[i].as_ref())
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &(i32, i32)> {
-        self.cells.keys()
+        self.dirty_keys.iter()
     }
 
     pub fn add_message(&mut self, text: &str) {

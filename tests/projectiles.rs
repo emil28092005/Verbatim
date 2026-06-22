@@ -172,6 +172,7 @@ fn ui_hud_shows_player_hp() {
     let mut s = setup();
     let mut ui = verbatim::ui::UiLayer::new();
     let player = s.game.entities.all()[0].clone();
+    ui.resize(80, 25);
     ui.draw_hud(
         80,
         25,
