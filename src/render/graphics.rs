@@ -1122,12 +1122,7 @@ impl GraphicsRenderer {
             return;
         }
         self.char_size = new_size;
-        let new_grid_w = (self.swapchain_extent.width / self.char_size) as usize;
-        let new_grid_h = (self.swapchain_extent.height / self.char_size) as usize;
-        if new_grid_w > 0 && new_grid_h > 0 {
-            self.grid_w = new_grid_w;
-            self.grid_h = new_grid_h;
-        }
+        self.check_resize();
     }
 
     pub fn cell_pixel_size(&self) -> u32 {
