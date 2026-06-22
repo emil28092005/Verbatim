@@ -4,6 +4,7 @@ use crate::entity::player::Player;
 use crate::entity::{EntityKind, EntityManager, ItemManager};
 use crate::input::{Action, InputHandler};
 use crate::physics::collision::resolve_grid_collision;
+use crate::physics::particle::ParticleManager;
 use crate::physics::projectile::{ProjectileManager, ProjectileType};
 use crate::physics::verlet::VerletSolver;
 use crate::render::lighting;
@@ -24,6 +25,7 @@ pub struct Game {
     pub verlet: VerletSolver,
     pub entities: EntityManager,
     pub projectiles: ProjectileManager,
+    pub particles: ParticleManager,
     pub items: ItemManager,
     pub player: Player,
     pub input: InputHandler,
@@ -72,6 +74,7 @@ impl Game {
             verlet: VerletSolver::new(),
             entities,
             projectiles: ProjectileManager::new(),
+            particles: ParticleManager::new(2000),
             items: ItemManager::new(),
             player,
             input: InputHandler::new(),
@@ -120,6 +123,7 @@ impl Game {
             verlet: VerletSolver::new(),
             entities,
             projectiles: ProjectileManager::new(),
+            particles: ParticleManager::new(2000),
             items: ItemManager::new(),
             player,
             input: InputHandler::new(),
@@ -548,8 +552,77 @@ impl Game {
             self.try_spawn_slime();
         }
 
+        self.spawn_ambient_particles();
         self.play_ambient_sounds();
+        self.particles.update();
         self.grid.swap_modified_flags();
+    }
+
+    fn spawn_ambient_particles(&mut self) {
+        let (px, py) = self.player.center(&self.entities);
+        let radius = 30i32;
+        let mut fire_count = 0u32;
+        let mut lava_count = 0u32;
+        let mut water_count = 0u32;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let x = px as i32 + dx;
+                let y = py as i32 + dy;
+                if !self.grid.in_bounds(x, y) {
+                    continue;
+                }
+                let cell = self.grid.get(x, y);
+                match cell.material {
+                    MaterialId::Fire => {
+                        fire_count += 1;
+                        if self.tick % 3 == 0
+                            && (dx * dx + dy * dy) < 400
+                            && self.particles.count() < 1800
+                        {
+                            let mut rng =
+                                (x as u32).wrapping_mul(7919).wrapping_add(self.tick as u32);
+                            rng ^= rng << 13;
+                            rng ^= rng >> 17;
+                            let off_x = ((rng & 0xFF) as f32 / 255.0 - 0.5) * 2.0;
+                            let off_y = ((rng >> 8 & 0xFF) as f32 / 255.0 - 0.5) * 2.0;
+                            self.particles.spawn(
+                                x as f32 + off_x,
+                                y as f32 + off_y,
+                                off_x * 0.3,
+                                -0.5 - ((rng >> 16) as f32 / 65535.0),
+                                15 + (rng % 10),
+                                [255, 140 + ((rng >> 4) % 80) as u8, 20, 200],
+                                1.0 + ((rng >> 8) % 3) as f32 * 0.5,
+                                -0.02,
+                            );
+                        }
+                    }
+                    MaterialId::Lava => {
+                        lava_count += 1;
+                        if self.tick % 20 == 0
+                            && (dx * dx + dy * dy) < 300
+                            && self.particles.count() < 1800
+                        {
+                            self.particles.spawn_burst(
+                                x as f32,
+                                y as f32,
+                                2,
+                                [255, 100, 20, 180],
+                                1.5,
+                                25,
+                                1.5,
+                                0.1,
+                            );
+                        }
+                    }
+                    MaterialId::Water => {
+                        water_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let _ = (fire_count, lava_count, water_count);
     }
 
     fn play_ambient_sounds(&mut self) {
@@ -1655,6 +1728,50 @@ impl Game {
                 s.build_humanoid(spawn_x as f32, spawn_y as f32);
                 s.health += self.depth as f32 * 3.0;
                 s.max_health += self.depth as f32 * 3.0;
+            }
+        }
+    }
+
+    pub fn trigger_explosion(&mut self, x: i32, y: i32, radius: i32, damage: f32) {
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let dist_sq = dx * dx + dy * dy;
+                if dist_sq > radius * radius {
+                    continue;
+                }
+                let bx = x + dx;
+                let by = y + dy;
+                if !self.grid.in_bounds(bx, by) {
+                    continue;
+                }
+                let cell = self.grid.get(bx, by);
+                if cell.is_solid() && !cell.is_static() {
+                    self.grid.set(bx, by, crate::world::cell::Cell::empty());
+                } else if cell.is_empty() {
+                    let mut fire = crate::world::cell::Cell::new(MaterialId::Fire);
+                    fire.updated_this_tick = true;
+                    self.grid.set(bx, by, fire);
+                    self.grid.set_temp(bx, by, 600.0);
+                }
+                self.grid.set_pressure(bx, by, 255);
+                self.grid.mark_dirty(bx, by);
+            }
+        }
+        self.audio.play("explosion");
+        for e in self.entities.all_mut() {
+            if !e.alive {
+                continue;
+            }
+            let dx = e.cx as i32 - x;
+            let dy = e.cy as i32 - y;
+            let dist = ((dx * dx + dy * dy) as f32).sqrt();
+            if dist < radius as f32 * 1.5 {
+                let dmg = (damage * (1.0 - dist / (radius as f32 * 1.5))).max(0.0);
+                e.take_damage(dmg);
+                let knockback = (1.0 - dist / (radius as f32 * 1.5)).max(0.0) * 5.0;
+                let dir = if dx == 0 { 0.0 } else { dx as f32 / dist };
+                e.set_horizontal_vel(dir * knockback);
+                e.set_vertical_vel(-knockback * 0.5);
             }
         }
     }

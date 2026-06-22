@@ -146,6 +146,8 @@ impl CellularAutomaton {
         self.heat_transfer(grid, &active, &pre_dirty);
         self.gas_step(grid, &active, &pre_dirty);
         self.pressure_step(grid, &active, &pre_dirty);
+        self.electricity_step(grid, &active, &pre_dirty);
+        self.structural_step(grid, &active);
         self.light_step(grid, &active);
         self.tick += 1;
     }
@@ -756,6 +758,172 @@ impl CellularAutomaton {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn electricity_step(
+        &mut self,
+        grid: &mut ChunkedGrid,
+        active: &[(i32, i32)],
+        pre_dirty: &std::collections::HashMap<(i32, i32), (i32, i32, i32, i32)>,
+    ) {
+        let reg = crate::world::material::MaterialRegistry::instance();
+        let cs = CHUNK_SIZE as i32;
+        for &(cx, cy) in active {
+            let dirty = grid.get_chunk_dirty(cx, cy);
+            let pre = pre_dirty.get(&(cx, cy)).copied();
+            let (min_x, min_y, max_x, max_y) = match (dirty, pre) {
+                (Some(d), Some(p)) => (d.0.min(p.0), d.1.min(p.1), d.2.max(p.2), d.3.max(p.3)),
+                (Some(d), None) => d,
+                (None, Some(p)) => p,
+                (None, None) => continue,
+            };
+            let w = max_x - min_x + 1;
+            let h = max_y - min_y + 1;
+            let ox = cx * cs;
+            let oy = cy * cs;
+            let chunk = match grid.get_chunk_mut(cx, cy) {
+                Some(c) => c,
+                None => continue,
+            };
+            let has_elec = chunk.electricity.iter().any(|&e| e > 0);
+            if !has_elec {
+                continue;
+            }
+            let mut changes: Vec<(usize, u8)> = Vec::new();
+            for ly in 0..h {
+                let wy = min_y + ly - oy;
+                if wy < 0 || wy >= cs {
+                    continue;
+                }
+                for lx in 0..w {
+                    let wx = min_x + lx - ox;
+                    if wx < 0 || wx >= cs {
+                        continue;
+                    }
+                    let idx = (wy as usize) * CHUNK_SIZE + (wx as usize);
+                    let cur = chunk.electricity[idx];
+                    if cur == 0 {
+                        continue;
+                    }
+                    let mat = reg.get(chunk.cells[idx].material);
+                    if !mat.conductive && cur < 200 {
+                        changes.push((idx, cur.saturating_sub(20)));
+                        continue;
+                    }
+                    let mut spread = 0u8;
+                    for &(dx, dy) in &NEIGHBORS4 {
+                        let nx = wx + dx;
+                        let ny = wy + dy;
+                        if nx < 0 || nx >= cs || ny < 0 || ny >= cs {
+                            continue;
+                        }
+                        let ni = (ny as usize) * CHUNK_SIZE + (nx as usize);
+                        let n_mat = reg.get(chunk.cells[ni].material);
+                        let n_elec = chunk.electricity[ni];
+                        if n_mat.conductive && n_elec < cur {
+                            let diff = (cur - n_elec) / 4;
+                            if diff > 0 {
+                                changes.push((ni, n_elec + diff));
+                                spread += diff;
+                            }
+                        }
+                    }
+                    if spread > 0 {
+                        changes.push((idx, cur.saturating_sub(spread)));
+                    } else {
+                        changes.push((idx, cur.saturating_sub(5)));
+                    }
+                }
+            }
+            for (idx, val) in changes {
+                chunk.electricity[idx] = val;
+            }
+        }
+    }
+
+    fn structural_step(&mut self, grid: &mut ChunkedGrid, active: &[(i32, i32)]) {
+        if !grid.is_infinite() {
+            return;
+        }
+        if self.tick % 30 != 0 {
+            return;
+        }
+        let reg = crate::world::material::MaterialRegistry::instance();
+        let cs = CHUNK_SIZE as i32;
+        for &(cx, cy) in active {
+            let dirty = match grid.get_chunk_dirty(cx, cy) {
+                Some(d) => d,
+                None => continue,
+            };
+            let (min_x, min_y, max_x, max_y) = dirty;
+            let ox = cx * cs;
+            let oy = cy * cs;
+            let chunk = match grid.get_chunk_mut(cx, cy) {
+                Some(c) => c,
+                None => continue,
+            };
+            let mut to_collapse: Vec<(usize, i32, i32)> = Vec::new();
+            for ly in 0..(max_y - min_y + 1) {
+                let wy = min_y + ly - oy;
+                if wy < 0 || wy >= cs {
+                    continue;
+                }
+                for lx in 0..(max_x - min_x + 1) {
+                    let wx = min_x + lx - ox;
+                    if wx < 0 || wx >= cs {
+                        continue;
+                    }
+                    let idx = (wy as usize) * CHUNK_SIZE + (wx as usize);
+                    let mat = reg.get(chunk.cells[idx].material);
+                    if !mat.structural {
+                        continue;
+                    }
+                    let below = if wy + 1 < cs {
+                        let bi = ((wy + 1) as usize) * CHUNK_SIZE + (wx as usize);
+                        chunk.cells[bi].is_solid()
+                    } else {
+                        true
+                    };
+                    if below {
+                        continue;
+                    }
+                    let below_left = if wy + 1 < cs && wx > 0 {
+                        let bi = ((wy + 1) as usize) * CHUNK_SIZE + ((wx - 1) as usize);
+                        chunk.cells[bi].is_solid()
+                    } else {
+                        true
+                    };
+                    let below_right = if wy + 1 < cs && wx + 1 < cs {
+                        let bi = ((wy + 1) as usize) * CHUNK_SIZE + ((wx + 1) as usize);
+                        chunk.cells[bi].is_solid()
+                    } else {
+                        true
+                    };
+                    if below_left || below_right {
+                        continue;
+                    }
+                    let left = if wx > 0 {
+                        chunk.cells[(wy as usize) * CHUNK_SIZE + ((wx - 1) as usize)].is_solid()
+                    } else {
+                        true
+                    };
+                    let right = if wx + 1 < cs {
+                        chunk.cells[(wy as usize) * CHUNK_SIZE + ((wx + 1) as usize)].is_solid()
+                    } else {
+                        true
+                    };
+                    if !left && !right {
+                        to_collapse.push((idx, wx, wy));
+                    }
+                }
+            }
+            for (idx, wx, wy) in to_collapse {
+                chunk.cells[idx] = Cell::new(MaterialId::Sand);
+                chunk.temps[idx] = 20.0;
+                chunk.modified = true;
+                chunk.mark_dirty(wx, wy);
             }
         }
     }

@@ -712,6 +712,8 @@ impl VulkanRenderer {
         CHAR_W
     }
 
+    pub fn upload_particles(&mut self, _particles: &crate::physics::particle::ParticleManager) {}
+
     fn check_resize(&mut self) {
         let sl = ash::khr::surface::Instance::new(&self.entry, &self.instance);
         let caps = match unsafe {

@@ -71,17 +71,29 @@ vec3 compute_light(ivec2 world_pos) {
 }
 
 void main() {
-    vec2 pixel = (in_grid + in_pos) * pc.cell_size;
-    gl_Position = vec4(
-        2.0 * pixel.x / pc.screen_size.x - 1.0,
-        2.0 * pixel.y / pc.screen_size.y - 1.0,
-        0.0, 1.0
-    );
-    out_color = in_color;
-    if (pc.is_ui != 0u) {
+    if (pc.is_ui == 2u) {
+        vec2 world_pos = in_grid;
+        vec2 screen = (world_pos - vec2(pc.cam_pos)) * pc.cell_size + in_pos * pc.cell_size;
+        gl_Position = vec4(
+            2.0 * screen.x / pc.screen_size.x - 1.0,
+            2.0 * screen.y / pc.screen_size.y - 1.0,
+            0.0, 1.0
+        );
+        out_color = in_color;
         out_light = vec3(1.0);
     } else {
-        ivec2 world_pos = ivec2(in_grid + vec2(pc.cam_pos));
-        out_light = compute_light(world_pos);
+        vec2 pixel = (in_grid + in_pos) * pc.cell_size;
+        gl_Position = vec4(
+            2.0 * pixel.x / pc.screen_size.x - 1.0,
+            2.0 * pixel.y / pc.screen_size.y - 1.0,
+            0.0, 1.0
+        );
+        out_color = in_color;
+        if (pc.is_ui != 0u) {
+            out_light = vec3(1.0);
+        } else {
+            ivec2 world_pos = ivec2(in_grid + vec2(pc.cam_pos));
+            out_light = compute_light(world_pos);
+        }
     }
 }

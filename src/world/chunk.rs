@@ -9,6 +9,7 @@ pub struct Chunk {
     pub gas_type: Vec<u8>,
     pub gas_density: Vec<u8>,
     pub light: Vec<[u8; 3]>,
+    pub electricity: Vec<u8>,
     pub active: bool,
     pub modified: bool,
     pub was_modified: bool,
@@ -28,6 +29,7 @@ impl Chunk {
             gas_type: vec![0; CHUNK_AREA],
             gas_density: vec![0; CHUNK_AREA],
             light: vec![[0, 0, 0]; CHUNK_AREA],
+            electricity: vec![0; CHUNK_AREA],
             active: false,
             modified: false,
             was_modified: false,
@@ -139,6 +141,21 @@ impl Chunk {
     pub fn set_light(&mut self, x: i32, y: i32, rgb: [u8; 3]) {
         if Self::in_bounds(x, y) {
             self.light[Self::idx(x, y)] = rgb;
+        }
+    }
+
+    #[inline]
+    pub fn get_electricity(&self, x: i32, y: i32) -> u8 {
+        if !Self::in_bounds(x, y) {
+            return 0;
+        }
+        self.electricity[Self::idx(x, y)]
+    }
+
+    #[inline]
+    pub fn set_electricity(&mut self, x: i32, y: i32, val: u8) {
+        if Self::in_bounds(x, y) {
+            self.electricity[Self::idx(x, y)] = val;
         }
     }
 

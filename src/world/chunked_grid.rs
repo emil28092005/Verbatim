@@ -450,6 +450,7 @@ impl ChunkedGrid {
                         chunk.pressure.swap(ci1, ci2);
                         chunk.gas_type.swap(ci1, ci2);
                         chunk.gas_density.swap(ci1, ci2);
+                        chunk.electricity.swap(ci1, ci2);
                         chunk.cells[ci2].updated_this_tick = true;
                         chunk.modified = true;
                         chunk.mark_dirty(lx1, ly1);
@@ -503,6 +504,7 @@ impl ChunkedGrid {
             chunk.pressure.swap(i1, i2);
             chunk.gas_type.swap(i1, i2);
             chunk.gas_density.swap(i1, i2);
+            chunk.electricity.swap(i1, i2);
             chunk.cells[i2].updated_this_tick = true;
             chunk.modified = true;
             chunk.mark_dirty(lx1, ly1);
@@ -860,6 +862,9 @@ impl ChunkedGrid {
         for l in &chunk.light {
             bytes.extend_from_slice(&l[..]);
         }
+        for &e in &chunk.electricity {
+            bytes.push(e);
+        }
         let dir = Path::new(path);
         if let Some(parent) = dir.parent() {
             std::fs::create_dir_all(parent)?;
@@ -918,6 +923,13 @@ impl ChunkedGrid {
                 }
                 chunk.light[i] = [data[off], data[off + 1], data[off + 2]];
                 off += 3;
+            }
+            for i in 0..area {
+                if off >= data.len() {
+                    break;
+                }
+                chunk.electricity[i] = data[off];
+                off += 1;
             }
         } else {
             let (x0, y0, x1, y1) = bounds;

@@ -73,6 +73,7 @@ trait GpuRenderer {
     fn grid_w(&self) -> usize;
     fn grid_h(&self) -> usize;
     fn cell_pixel_size(&self) -> u32;
+    fn upload_particles(&mut self, particles: &verbatim::physics::particle::ParticleManager);
 }
 
 impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
@@ -102,6 +103,9 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
     fn cell_pixel_size(&self) -> u32 {
         verbatim::render::vulkan::VulkanRenderer::cell_pixel_size(self)
     }
+    fn upload_particles(&mut self, particles: &verbatim::physics::particle::ParticleManager) {
+        verbatim::render::vulkan::VulkanRenderer::upload_particles(self, particles);
+    }
 }
 
 impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
@@ -130,6 +134,9 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
     }
     fn cell_pixel_size(&self) -> u32 {
         verbatim::render::graphics::GraphicsRenderer::cell_pixel_size(self)
+    }
+    fn upload_particles(&mut self, particles: &verbatim::physics::particle::ParticleManager) {
+        verbatim::render::graphics::GraphicsRenderer::upload_particles(self, particles);
     }
 }
 
@@ -532,6 +539,7 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
 
                     game.build_ui(vw, vh);
 
+                    renderer.upload_particles(&game.particles);
                     renderer.render(
                         &game.grid,
                         &game.entities,

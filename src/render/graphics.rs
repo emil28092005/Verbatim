@@ -47,6 +47,14 @@ struct ColorInstance {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct ParticleInstance {
+    grid_x: f32,
+    grid_y: f32,
+    color: [u8; 4],
+}
+
+#[repr(C)]
 #[derive(bytemuck::NoUninit, Clone, Copy, Default)]
 struct GpuLightSource {
     pos: [f32; 2],
@@ -114,6 +122,12 @@ pub struct GraphicsRenderer {
     ui_instance_memory: vk::DeviceMemory,
     ui_instance_ptr: *mut ColorInstance,
     ui_instance_capacity: usize,
+
+    particle_instance_buffer: vk::Buffer,
+    particle_instance_memory: vk::DeviceMemory,
+    particle_instance_ptr: *mut ParticleInstance,
+    particle_instance_capacity: usize,
+    particle_count: usize,
 
     grid_buffer: vk::Buffer,
     grid_memory: vk::DeviceMemory,
@@ -706,6 +720,44 @@ impl GraphicsRenderer {
             ptr as *mut ColorInstance
         };
 
+        let part_capacity = 2000usize;
+        let part_inst_sz =
+            (part_capacity * std::mem::size_of::<ParticleInstance>()) as vk::DeviceSize;
+        let pibi = vk::BufferCreateInfo::default()
+            .size(part_inst_sz)
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let particle_instance_buffer = unsafe { device.create_buffer(&pibi, None) }
+            .map_err(|e| format!("part inst buf: {e:?}"))?;
+        let preq = unsafe { device.get_buffer_memory_requirements(particle_instance_buffer) };
+        let pmt = find_mem(
+            preq.memory_type_bits,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+        let particle_instance_memory = unsafe {
+            device.allocate_memory(
+                &vk::MemoryAllocateInfo::default()
+                    .allocation_size(preq.size)
+                    .memory_type_index(pmt),
+                None,
+            )
+        }
+        .map_err(|e| format!("part inst mem: {e:?}"))?;
+        let particle_instance_ptr = unsafe {
+            device
+                .bind_buffer_memory(particle_instance_buffer, particle_instance_memory, 0)
+                .expect("bind part inst");
+            let ptr = device
+                .map_memory(
+                    particle_instance_memory,
+                    0,
+                    part_inst_sz,
+                    vk::MemoryMapFlags::default(),
+                )
+                .expect("map part inst");
+            ptr as *mut ParticleInstance
+        };
+
         Ok(Self {
             grid_w,
             grid_h,
@@ -742,6 +794,11 @@ impl GraphicsRenderer {
             ui_instance_memory,
             ui_instance_ptr,
             ui_instance_capacity: ui_capacity,
+            particle_instance_buffer,
+            particle_instance_memory,
+            particle_instance_ptr,
+            particle_instance_capacity: part_capacity,
+            particle_count: 0,
 
             grid_buffer,
             grid_memory,
@@ -1076,6 +1133,35 @@ impl GraphicsRenderer {
                 device.cmd_draw_indexed(cmd, 6, ui_count as u32, 0, 0, 0);
             }
 
+            if self.particle_count > 0 {
+                device.cmd_bind_vertex_buffers(
+                    cmd,
+                    0,
+                    &[self.vertex_buffer, self.particle_instance_buffer],
+                    &[0, 0],
+                );
+                let part_pc = PushConstants {
+                    screen_size: [
+                        self.swapchain_extent.width as f32,
+                        self.swapchain_extent.height as f32,
+                    ],
+                    cell_size: [CHAR_W as f32, CHAR_H as f32],
+                    world_size: [self.grid_w as i32, self.grid_h as i32],
+                    cam_pos: [cam_x, cam_y],
+                    ambient: [1.0, 1.0, 1.0],
+                    is_ui: 2,
+                    light_count: 0,
+                };
+                device.cmd_push_constants(
+                    cmd,
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&part_pc),
+                );
+                device.cmd_draw_indexed(cmd, 6, self.particle_count as u32, 0, 0, 0);
+            }
+
             device.cmd_end_render_pass(cmd);
             let _ = device.end_command_buffer(cmd);
 
@@ -1113,6 +1199,29 @@ impl GraphicsRenderer {
 
     pub fn cell_pixel_size(&self) -> u32 {
         CHAR_W
+    }
+
+    pub fn upload_particles(&mut self, particles: &crate::physics::particle::ParticleManager) {
+        let instances = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.particle_instance_ptr,
+                self.particle_instance_capacity,
+            )
+        };
+        let mut count = 0usize;
+        for p in particles.all() {
+            if count >= self.particle_instance_capacity {
+                break;
+            }
+            let alpha = ((p.life as f32 / p.max_life as f32) * 255.0) as u8;
+            instances[count] = ParticleInstance {
+                grid_x: p.x,
+                grid_y: p.y,
+                color: [p.color[0], p.color[1], p.color[2], alpha],
+            };
+            count += 1;
+        }
+        self.particle_count = count;
     }
 
     fn check_resize(&mut self) {
@@ -1346,6 +1455,9 @@ impl Drop for GraphicsRenderer {
             self.device.free_memory(self.instance_memory, None);
             self.device.destroy_buffer(self.ui_instance_buffer, None);
             self.device.free_memory(self.ui_instance_memory, None);
+            self.device
+                .destroy_buffer(self.particle_instance_buffer, None);
+            self.device.free_memory(self.particle_instance_memory, None);
             self.device.destroy_buffer(self.vertex_buffer, None);
             self.device.free_memory(self.vertex_memory, None);
             self.device.destroy_buffer(self.index_buffer, None);
