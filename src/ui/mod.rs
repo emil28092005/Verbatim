@@ -5,6 +5,8 @@ use crate::world::cell::MaterialId;
 use crate::world::chunked_grid::ChunkedGrid;
 
 pub const UI_SCALE: i32 = 4;
+pub const FONT_W: i32 = 3;
+pub const FONT_H: i32 = 5;
 
 #[derive(Clone, Debug)]
 pub struct UiCell {
@@ -18,6 +20,7 @@ pub struct UiLayer {
     cells: HashMap<(i32, i32), UiCell>,
     messages: Vec<(String, u32)>,
     damage_numbers: Vec<DamageNumber>,
+    font_scale: i32,
 }
 
 #[derive(Clone)]
@@ -35,7 +38,26 @@ impl UiLayer {
             cells: HashMap::new(),
             messages: Vec::new(),
             damage_numbers: Vec::new(),
+            font_scale: 2,
         }
+    }
+
+    pub fn set_font_scale(&mut self, scale: i32) {
+        self.font_scale = scale.max(1);
+    }
+
+    pub fn font_scale(&self) -> i32 {
+        self.font_scale
+    }
+
+    #[inline]
+    fn fw(&self) -> i32 {
+        FONT_W * self.font_scale
+    }
+
+    #[inline]
+    fn fh(&self) -> i32 {
+        FONT_H * self.font_scale
     }
 
     pub fn clear(&mut self) {
@@ -174,7 +196,8 @@ impl UiLayer {
             return;
         }
         let ratio = (health / max_health).clamp(0.0, 1.0);
-        let filled = (ratio * width as f32).round() as i32;
+        let scaled_width = width * self.font_scale;
+        let filled = (ratio * scaled_width as f32).round() as i32;
         let color = if ratio > 0.6 {
             [60, 220, 60]
         } else if ratio > 0.3 {
@@ -182,7 +205,7 @@ impl UiLayer {
         } else {
             [240, 50, 50]
         };
-        for i in 0..width {
+        for i in 0..scaled_width {
             let x = screen_x + i;
             let ch = if i < filled { '#' } else { '-' };
             let fg = if i < filled { color } else { [80, 80, 80] };
@@ -198,7 +221,7 @@ impl UiLayer {
             let (sx, sy) = entity_screen_pos_ui(e, cam_x, cam_y);
             let label = e.name().to_uppercase();
             let top = sy - (e.half_h as i32 * UI_SCALE) - 7;
-            let x = sx - (Self::text_width(&label) / 2);
+            let x = sx - (self.text_width(&label) / 2);
             let fg = entity_kind_color(e);
             self.draw_text(x, top, &label, fg, 255);
         }
@@ -335,8 +358,11 @@ impl UiLayer {
         player: Option<&Entity>,
         player_state: &crate::entity::player::Player,
     ) {
-        let w = 52i32;
-        let h = 62i32;
+        let fs = self.font_scale;
+        let fh = self.fh();
+        let fw = self.fw();
+        let w = 52 * fs / 2;
+        let h = 62 * fs / 2;
         let bg = [22u8, 26, 38];
         let border = [160u8, 180, 255];
         let title = [220u8, 230, 255];
@@ -375,12 +401,20 @@ impl UiLayer {
         );
 
         let title_text = "STATUS";
-        let tx = start_x + (w - Self::text_width(title_text)) / 2;
+        let tx = start_x + (w - self.text_width(title_text)) / 2;
         self.draw_text(tx, start_y + 2, title_text, title, 255);
+
+        let row1 = start_y + 10 * fs / 2;
+        let row2 = start_y + 18 * fs / 2;
+        let row3 = start_y + 26 * fs / 2;
+        let row4 = start_y + 36 * fs / 2;
+        let row5 = start_y + 44 * fs / 2;
+        let row_inv = start_y + 52 * fs / 2;
+        let row_items = start_y + 58 * fs / 2;
 
         if let Some(p) = player {
             let hp_ratio = (p.health / p.max_health).clamp(0.0, 1.0);
-            let hp_filled = (hp_ratio * 38.0).round() as i32;
+            let hp_filled = (hp_ratio * 38.0 * fs as f32 / 2.0).round() as i32;
             let bar_color = if hp_ratio > 0.6 {
                 [80, 240, 80]
             } else if hp_ratio > 0.3 {
@@ -388,43 +422,43 @@ impl UiLayer {
             } else {
                 [255, 60, 60]
             };
-            self.draw_text(start_x + 3, start_y + 10, "HP", fg, 255);
-            for i in 0..38 {
+            self.draw_text(start_x + 3, row1, "HP", fg, 255);
+            for i in 0..(38 * fs / 2) {
                 let ch = if i < hp_filled { '#' } else { '-' };
                 let c = if i < hp_filled {
                     bar_color
                 } else {
                     [80, 80, 100]
                 };
-                self.set(start_x + 10 + i, start_y + 10, ch, c, bg);
+                self.set(start_x + 10 * fs / 2 + i, row1, ch, c, bg);
             }
             let hp_text = format!(
                 "{}/{}  LV:{}",
                 p.health as i32, p.max_health as i32, p.level
             );
-            self.draw_text(start_x + 3, start_y + 18, &hp_text, fg, 255);
+            self.draw_text(start_x + 3, row2, &hp_text, fg, 255);
 
             let xp_ratio = (p.xp as f32 / p.xp_to_level() as f32).clamp(0.0, 1.0);
-            let xp_filled = (xp_ratio * 38.0).round() as i32;
-            self.draw_text(start_x + 3, start_y + 26, "XP", fg, 255);
-            for i in 0..38 {
+            let xp_filled = (xp_ratio * 38.0 * fs as f32 / 2.0).round() as i32;
+            self.draw_text(start_x + 3, row3, "XP", fg, 255);
+            for i in 0..(38 * fs / 2) {
                 let ch = if i < xp_filled { '#' } else { '-' };
                 let c = if i < xp_filled {
                     [80, 160, 240]
                 } else {
                     [60, 60, 80]
                 };
-                self.set(start_x + 10 + i, start_y + 26, ch, c, bg);
+                self.set(start_x + 10 * fs / 2 + i, row3, ch, c, bg);
             }
 
             let stats = format!("STR:{}  AGI:{}", p.strength, p.agility);
-            self.draw_text(start_x + 3, start_y + 36, &stats, dim, 255);
+            self.draw_text(start_x + 3, row4, &stats, dim, 255);
             let stats2 = format!("TOU:{}  WIL:{}", p.toughness, p.willpower);
-            self.draw_text(start_x + 3, start_y + 44, &stats2, dim, 255);
+            self.draw_text(start_x + 3, row5, &stats2, dim, 255);
         }
 
         let inv_title = "INVENTORY";
-        self.draw_text(start_x + 3, start_y + 52, inv_title, fg, 255);
+        self.draw_text(start_x + 3, row_inv, inv_title, fg, 255);
         let mut ix = start_x + 3;
         for item in player_state.inventory.iter().take(8) {
             if ix + 2 >= start_x + w - 2 {
@@ -432,10 +466,10 @@ impl UiLayer {
             }
             let [ch1, ch2] = item.display_glyph();
             let col = item.color();
-            self.set(ix, start_y + 58, ch1, col, bg);
+            self.set(ix, row_items, ch1, col, bg);
             self.set(
                 ix + 1,
-                start_y + 58,
+                row_items,
                 ch2,
                 [col[0] / 2, col[1] / 2, col[2] / 2],
                 bg,
@@ -462,9 +496,7 @@ impl UiLayer {
             String::new()
         };
         if !status.is_empty() {
-            for (i, ch) in status.chars().enumerate() {
-                self.set(start_x + 30 + i as i32, start_y + 38, ch, [255, 80, 80], bg);
-            }
+            self.draw_text(start_x + 30 * fs / 2, row4, &status, [255, 80, 80], 255);
         }
     }
 
@@ -486,9 +518,9 @@ impl UiLayer {
 
         let cols = 4i32;
         let rows = 2i32;
-        let slot_w = 12i32;
-        let slot_h = 10i32;
-        let gap = 3i32;
+        let slot_w = 12i32 * self.font_scale / 2;
+        let slot_h = 10i32 * self.font_scale / 2;
+        let gap = 3i32 * self.font_scale / 2;
         let panel_w = cols * slot_w + (cols + 1) * gap + 4;
         let panel_h = rows * slot_h + (rows + 1) * gap + 28;
 
@@ -528,7 +560,7 @@ impl UiLayer {
         self.draw_text(px_start + 4, py_start + 3, title, title_col, 255);
         let count_text = format!("({}/{} items)", player_state.inventory.len(), cols * rows);
         self.draw_text(
-            px_start + 4 + Self::text_width(title) + 2,
+            px_start + 4 + self.text_width(title) + 2,
             py_start + 3,
             &count_text,
             dim,
@@ -542,7 +574,7 @@ impl UiLayer {
             for col in 0..cols {
                 let idx = (row * cols + col) as usize;
                 let sx = px_start + gap + col * (slot_w + gap) + 2;
-                let sy = py_start + 14 + row * (slot_h + gap) + gap;
+                let sy = py_start + 14 * self.font_scale / 2 + row * (slot_h + gap) + gap;
 
                 for y in 0..slot_h {
                     for x in 0..slot_w {
@@ -584,7 +616,7 @@ impl UiLayer {
                     );
 
                     let label = item.name();
-                    let label_w = Self::text_width(label) as i32;
+                    let label_w = self.text_width(label) as i32;
                     let lx = sx + (slot_w - label_w) / 2;
                     let ly = sy + slot_h - 1;
                     if lx >= sx && lx + label_w <= sx + slot_w {
@@ -672,6 +704,8 @@ impl UiLayer {
         player_state: &crate::entity::player::Player,
         fps: f32,
     ) {
+        let fs = self.font_scale;
+        let fh = self.fh();
         let bg = [18u8, 20, 30];
         let border = [160u8, 170, 210];
         let fill_alpha = 140u8;
@@ -687,11 +721,11 @@ impl UiLayer {
             .map(|i| i.display_string())
             .unwrap_or("  ".to_string());
 
-        let bar_h = 28i32;
+        let bar_h = (28 * fs / 2).max(fh * 3);
         let y_top = screen_h as i32 - bar_h;
         let y_row1 = y_top + 2;
-        let y_row2 = y_top + 12;
-        let y_row3 = y_top + 22;
+        let y_row2 = y_top + 2 + fh + 2;
+        let y_row3 = y_top + 2 + (fh + 2) * 2;
 
         for row in y_top..screen_h as i32 {
             for x in 0..screen_w {
@@ -707,7 +741,8 @@ impl UiLayer {
         self.draw_text(0, y_row1, "HP", [220, 220, 220], 255);
         if let Some(p) = player {
             let hp_ratio = (p.health / p.max_health).clamp(0.0, 1.0);
-            let hp_filled = (hp_ratio * 28.0).round() as i32;
+            let hp_bar_w = 28 * fs / 2;
+            let hp_filled = (hp_ratio * hp_bar_w as f32).round() as i32;
             let bar_fg = if hp_ratio > 0.6 {
                 [80, 240, 80]
             } else if hp_ratio > 0.3 {
@@ -715,17 +750,23 @@ impl UiLayer {
             } else {
                 [255, 60, 60]
             };
-            for i in 0..28 {
+            for i in 0..hp_bar_w {
                 let ch = if i < hp_filled { '#' } else { '-' };
                 let c = if i < hp_filled { bar_fg } else { [70, 70, 90] };
-                self.set(10 + i, y_row1 + 4, ch, c, bg);
+                self.set(10 * fs / 2 + i, y_row1, ch, c, bg);
             }
             let hp_text = format!("{} / {}", p.health as i32, p.max_health as i32);
-            self.draw_text(40, y_row1, &hp_text, [220, 220, 220], 255);
+            self.draw_text(
+                (40 * fs / 2).max(10 * fs / 2 + hp_bar_w + 2),
+                y_row1,
+                &hp_text,
+                [220, 220, 220],
+                255,
+            );
         }
 
         let brush_color = brush_color(brush);
-        self.set(0, y_row2 + 4, '#', brush_color, bg);
+        self.set(0, y_row2, '#', brush_color, bg);
         let brush_text = format!(" {}", brush_name);
         self.draw_text(1, y_row2, &brush_text, [200, 200, 140], 255);
 
@@ -736,7 +777,7 @@ impl UiLayer {
             player_state.inventory.len(),
             fps as i32
         );
-        let gear_w = Self::text_width(&gear);
+        let gear_w = self.text_width(&gear);
         let gear_x = (screen_w as i32 - gear_w).max(0);
         self.draw_text(gear_x, y_row2, &gear, [160, 180, 220], 255);
 
@@ -749,14 +790,14 @@ impl UiLayer {
             depth,
             tick
         );
-        let stats_w = Self::text_width(&stats);
+        let stats_w = self.text_width(&stats);
         let stats_x = (screen_w as i32 - stats_w).max(0);
         self.draw_text(stats_x, y_row3, &stats, [180, 190, 220], 255);
 
         if let Some(p) = player {
             if p.on_fire {
                 let msg = "ON FIRE!";
-                self.draw_text(40, y_top - 7, msg, [255, 100, 20], 255);
+                self.draw_text(40 * fs / 2, y_top - fh - 2, msg, [255, 100, 20], 255);
             }
         }
     }
@@ -764,6 +805,7 @@ impl UiLayer {
     pub fn draw_messages(&mut self, x: i32, y: i32) {
         let mut yy = y;
         let messages: Vec<(String, u32)> = self.messages.iter().rev().take(8).cloned().collect();
+        let line_h = self.fh() + 1;
         for (msg, life) in messages {
             if yy < 0 {
                 break;
@@ -775,7 +817,7 @@ impl UiLayer {
                 (200.0 * fade) as u8,
             ];
             self.draw_text(x, yy, &msg, fg, 255);
-            yy -= 6;
+            yy -= line_h;
         }
     }
 
@@ -783,20 +825,21 @@ impl UiLayer {
         let cx = screen_w as i32 / 2;
         let cy = screen_h as i32 / 2;
         let msg = "YOU DIED";
-        let x = cx - (Self::text_width(msg) / 2);
+        let x = cx - (self.text_width(msg) / 2);
         self.draw_text(x, cy - 3, msg, [255, 50, 50], 255);
         let stats = format!("KILLS: {}  SCORE: {}", kills, score);
-        let x2 = cx - (Self::text_width(&stats) / 2);
+        let x2 = cx - (self.text_width(&stats) / 2);
         self.draw_text(x2, cy + 3, &stats, [200, 200, 200], 255);
     }
 
-    pub fn text_width(text: &str) -> i32 {
+    pub fn text_width(&self, text: &str) -> i32 {
         text.chars()
-            .map(|c| if c == '\n' { 0 } else { 3 })
+            .map(|c| if c == '\n' { 0 } else { self.fw() as usize })
             .sum::<usize>() as i32
     }
 
     pub fn draw_text(&mut self, x: i32, y: i32, text: &str, fg: [u8; 3], alpha: u8) {
+        let fs = self.font_scale;
         let mut cx = x;
         for c in text.chars() {
             if c == '\n' {
@@ -804,21 +847,33 @@ impl UiLayer {
                 continue;
             }
             if let Some(bitmap) = char_bitmap(c) {
-                for row in 0..5 {
-                    for col in 0..3 {
-                        let filled = (bitmap[row] >> (2 - col)) & 1 == 1;
+                for row in 0..FONT_H {
+                    for col in 0..FONT_W {
+                        let filled = (bitmap[row as usize] >> (FONT_W - 1 - col)) & 1 == 1;
                         let a = if filled { alpha } else { 0 };
-                        self.set_alpha(cx + col as i32, y + row as i32, c, fg, [0, 0, 0], a);
+                        for dy in 0..fs {
+                            for dx in 0..fs {
+                                let px = cx + col * fs + dx;
+                                let py = y + row * fs + dy;
+                                self.set_alpha(px, py, c, fg, [0, 0, 0], a);
+                            }
+                        }
                     }
                 }
             } else {
-                for row in 0..5 {
-                    for col in 0..3 {
-                        self.set_alpha(cx + col as i32, y + row as i32, c, fg, [0, 0, 0], alpha);
+                for row in 0..FONT_H {
+                    for col in 0..FONT_W {
+                        for dy in 0..fs {
+                            for dx in 0..fs {
+                                let px = cx + col * fs + dx;
+                                let py = y + row * fs + dy;
+                                self.set_alpha(px, py, c, fg, [0, 0, 0], alpha);
+                            }
+                        }
                     }
                 }
             }
-            cx += 3;
+            cx += self.fw();
         }
     }
 }

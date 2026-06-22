@@ -353,6 +353,11 @@ impl Game {
         self.ui.clear();
         self.ui.tick_messages();
 
+        let ui_w = (vw as i32) * crate::ui::UI_SCALE;
+        let ui_h = (vh as i32) * crate::ui::UI_SCALE;
+        let fs = ((ui_h / 200).max(2)).min(6) as i32;
+        self.ui.set_font_scale(fs);
+
         let player = self.player.entity(&self.entities).cloned();
         let brush = self
             .input
@@ -360,8 +365,6 @@ impl Game {
             .to_material()
             .unwrap_or(crate::world::cell::MaterialId::Empty);
         let player_alive = player.as_ref().map(|e| e.alive).unwrap_or(false);
-        let ui_w = (vw as i32) * crate::ui::UI_SCALE;
-        let ui_h = (vh as i32) * crate::ui::UI_SCALE;
         if !self.inventory_open {
             self.ui
                 .draw_character_panel(1, 1, player.as_ref(), &self.player);
@@ -378,7 +381,7 @@ impl Game {
             &self.player,
             self.fps,
         );
-        let msg_x = (ui_w / 2) - 24;
+        let msg_x = (ui_w / 2) - 24 * fs;
         self.ui.draw_messages(msg_x, 4);
         self.ui.draw_damage_numbers(self.cam_x, self.cam_y);
         self.ui.draw_edge_indicators(

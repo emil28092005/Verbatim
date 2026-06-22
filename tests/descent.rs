@@ -69,11 +69,14 @@ fn depth_shown_in_hud() {
         "LV:{} XP:{} K:{} S:{} D:{} T:{}",
         player.level, player.xp, 0, 0, s.game.depth, s.game.tick
     );
-    let stats_w = verbatim::ui::UiLayer::text_width(&stats);
+    let stats_w = ui.text_width(&stats);
     let stats_x = (screen_w as i32 - stats_w as i32).max(0);
-    let y_row3 = screen_h as i32 - 28 + 22;
+    let fs = ui.font_scale();
+    let fh = 5 * fs;
+    let bar_h = (28 * fs / 2).max(fh * 3);
+    let y_row3 = screen_h as i32 - bar_h + 2 + (fh + 2) * 2;
     let line: String = (stats_x as i32..screen_w as i32)
-        .step_by(3)
+        .step_by(fs as usize * 3)
         .map(|x| ui.get(x, y_row3).map(|c| c.ch).unwrap_or(' '))
         .collect();
     assert!(line.contains("D:1"), "HUD should show depth: {}", line);
