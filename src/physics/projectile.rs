@@ -136,13 +136,16 @@ impl Projectile {
                     }
                     let cell = grid.get(x, y);
                     if cell.is_empty() {
-                        grid.set(x, y, Cell::new(MaterialId::Fire));
+                        let mut fire = Cell::new(MaterialId::Fire);
+                        fire.updated_this_tick = true;
+                        grid.set(x, y, fire);
                     } else if cell.material == MaterialId::Wood
                         || cell.material == MaterialId::Grass
                         || cell.material == MaterialId::Flesh
                     {
                         let mut ignited = cell;
                         ignited.material = MaterialId::Fire;
+                        ignited.updated_this_tick = true;
                         grid.set(x, y, ignited);
                         grid.set_temp(x, y, 400.0);
                     }

@@ -243,6 +243,7 @@ impl CellularAutomaton {
         if temp > 100.0 {
             let mut new = grid.get(x, y);
             new.material = MaterialId::Steam;
+            new.updated_this_tick = true;
             grid.set(x, y, new);
             grid.set_temp(x, y, 110.0);
         }
@@ -301,7 +302,10 @@ impl CellularAutomaton {
                     grid.set_temp(x, y, lava_temp - 50.0);
                 }
                 MaterialId::Wood | MaterialId::Grass | MaterialId::Flesh if n_temp < 300.0 => {
-                    grid.set(nx, ny, Cell::new(MaterialId::Fire));
+                    let mut new_n = neighbor;
+                    new_n.material = MaterialId::Fire;
+                    new_n.updated_this_tick = true;
+                    grid.set(nx, ny, new_n);
                     grid.set_temp(nx, ny, 400.0);
                 }
                 MaterialId::Sand if n_temp > 1700.0 => {
@@ -377,6 +381,7 @@ impl CellularAutomaton {
             if mat.flammable && n_temp < mat.ignition_temp {
                 let mut new_n = neighbor;
                 new_n.material = MaterialId::Fire;
+                new_n.updated_this_tick = true;
                 grid.set(nx, ny, new_n);
                 grid.set_temp(nx, ny, 400.0);
             }
@@ -473,6 +478,7 @@ impl CellularAutomaton {
         if temp > 200.0 {
             let mut new = grid.get(x, y);
             new.material = MaterialId::Fire;
+            new.updated_this_tick = true;
             grid.set(x, y, new);
             grid.set_temp(x, y, 400.0);
         }
@@ -481,7 +487,10 @@ impl CellularAutomaton {
     fn update_grass(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
         let temp = grid.get_temp(x, y);
         if temp > 250.0 {
-            grid.set(x, y, Cell::new(MaterialId::Fire));
+            let mut new = grid.get(x, y);
+            new.material = MaterialId::Fire;
+            new.updated_this_tick = true;
+            grid.set(x, y, new);
             grid.set_temp(x, y, 400.0);
         }
     }
