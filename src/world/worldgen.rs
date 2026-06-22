@@ -1182,18 +1182,18 @@ impl<'a> WorldGenerator<'a> {
     }
 
     fn surface_height(&mut self, x: i32, h: i32) -> i32 {
-        let base = (h - 3) - ((x as f32 * 0.08).sin() * scf(4.0)) as i32;
-        let detail = ((x as f32 * 0.23).sin() * scf(2.0)) as i32;
-        let micro = ((x as f32 * 0.57).sin() * scf(1.0)) as i32;
+        let base = (h - 3) - ((x as f32 * 0.012).sin() * scf(3.0)) as i32;
+        let detail = ((x as f32 * 0.04).sin() * scf(1.5)) as i32;
+        let micro = ((x as f32 * 0.11).sin() * scf(0.5)) as i32;
         (base + detail + micro).max(10).min(h - 3)
     }
 
     const SURFACE_BASE_Y: i32 = 120;
 
     fn surface_height_world(&mut self, x: i32) -> i32 {
-        let base = Self::SURFACE_BASE_Y - ((x as f32 * 0.08).sin() * scf(4.0)) as i32;
-        let detail = ((x as f32 * 0.23).sin() * scf(2.0)) as i32;
-        let micro = ((x as f32 * 0.57).sin() * scf(1.0)) as i32;
+        let base = Self::SURFACE_BASE_Y - ((x as f32 * 0.012).sin() * scf(3.0)) as i32;
+        let detail = ((x as f32 * 0.04).sin() * scf(1.5)) as i32;
+        let micro = ((x as f32 * 0.11).sin() * scf(0.5)) as i32;
         (base + detail + micro).max(10)
     }
 
