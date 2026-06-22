@@ -241,6 +241,15 @@ pub fn ambient_light() -> [u8; 3] {
     [160, 160, 180]
 }
 
+pub fn ambient_light_at_tick(tick: u64) -> [u8; 3] {
+    let phase = (tick as f32 * 0.001).sin();
+    let brightness = 0.5 + 0.5 * phase;
+    let r = (80.0 + 100.0 * brightness) as u8;
+    let g = (80.0 + 100.0 * brightness) as u8;
+    let b = (100.0 + 100.0 * brightness) as u8;
+    [r, g, b]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -72,6 +72,7 @@ trait GpuRenderer {
     );
     fn grid_w(&self) -> usize;
     fn grid_h(&self) -> usize;
+    fn adjust_zoom(&mut self, delta: i32);
 }
 
 impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
@@ -98,6 +99,9 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
     fn grid_h(&self) -> usize {
         verbatim::render::vulkan::VulkanRenderer::grid_h(self)
     }
+    fn adjust_zoom(&mut self, delta: i32) {
+        verbatim::render::vulkan::VulkanRenderer::adjust_zoom(self, delta)
+    }
 }
 
 impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
@@ -123,6 +127,9 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
     }
     fn grid_h(&self) -> usize {
         verbatim::render::graphics::GraphicsRenderer::grid_h(self)
+    }
+    fn adjust_zoom(&mut self, delta: i32) {
+        verbatim::render::graphics::GraphicsRenderer::adjust_zoom(self, delta)
     }
 }
 
@@ -257,6 +264,17 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
                     WindowEvent::CursorMoved { position, .. } => {
                         input.on_mouse_move(position.x, position.y);
+                        game.mouse_ui_x = position.x as i32;
+                        game.mouse_ui_y = position.y as i32;
+                        let vw = renderer.grid_w() as i32;
+                        let vh = renderer.grid_h() as i32;
+                        game.show_tooltip = true;
+                        game.show_crosshair = true;
+                        if vw > 0 && vh > 0 {
+                            let wx = game.cam_x + (position.x as i32 * vw / 1600);
+                            let wy = game.cam_y + (position.y as i32 * vh / 900);
+                            game.mouse_world_pos = (wx, wy);
+                        }
                     }
                     WindowEvent::MouseInput { state, button, .. } => {
                         input.on_mouse_button(button, state);
@@ -297,6 +315,13 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
 
                     if input.toggle_audio {
                         game.audio.toggle();
+                    }
+
+                    if input.zoom_in {
+                        renderer.adjust_zoom(-2);
+                    }
+                    if input.zoom_out {
+                        renderer.adjust_zoom(2);
                     }
 
                     if input.jump {

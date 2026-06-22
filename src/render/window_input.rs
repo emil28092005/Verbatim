@@ -19,6 +19,8 @@ pub struct WindowInput {
     pub cam_down: bool,
     pub quit: bool,
     pub toggle_audio: bool,
+    pub zoom_in: bool,
+    pub zoom_out: bool,
     pub paint: Option<u8>,
     pub mouse_x: f64,
     pub mouse_y: f64,
@@ -41,6 +43,8 @@ pub struct WindowInput {
     use_item_was_down: bool,
     drop_item_was_down: bool,
     audio_was_down: bool,
+    zoom_in_was_down: bool,
+    zoom_out_was_down: bool,
     down_keys: HashSet<KeyCode>,
 }
 
@@ -64,6 +68,8 @@ impl WindowInput {
             cam_down: false,
             quit: false,
             toggle_audio: false,
+            zoom_in: false,
+            zoom_out: false,
             paint: None,
             mouse_x: 0.0,
             mouse_y: 0.0,
@@ -86,6 +92,8 @@ impl WindowInput {
             use_item_was_down: false,
             drop_item_was_down: false,
             audio_was_down: false,
+            zoom_in_was_down: false,
+            zoom_out_was_down: false,
             down_keys: HashSet::new(),
         }
     }
@@ -210,6 +218,15 @@ impl WindowInput {
         let now_audio = keys.contains(&KeyCode::KeyM);
         self.toggle_audio = now_audio && !self.audio_was_down;
         self.audio_was_down = now_audio;
+
+        let now_zoom_in = keys.contains(&KeyCode::Equal) || keys.contains(&KeyCode::NumpadAdd);
+        self.zoom_in = now_zoom_in && !self.zoom_in_was_down;
+        self.zoom_in_was_down = now_zoom_in;
+
+        let now_zoom_out =
+            keys.contains(&KeyCode::Minus) || keys.contains(&KeyCode::NumpadSubtract);
+        self.zoom_out = now_zoom_out && !self.zoom_out_was_down;
+        self.zoom_out_was_down = now_zoom_out;
 
         self.paint = None;
         if keys.contains(&KeyCode::Digit1) {

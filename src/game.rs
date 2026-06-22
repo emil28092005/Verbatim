@@ -51,6 +51,11 @@ pub struct Game {
     pub inventory_mouse_y: i32,
     pub seed: u64,
     pub cache_dir: Option<String>,
+    pub mouse_world_pos: (i32, i32),
+    pub mouse_ui_x: i32,
+    pub mouse_ui_y: i32,
+    pub show_tooltip: bool,
+    pub show_crosshair: bool,
 }
 
 impl Game {
@@ -94,6 +99,11 @@ impl Game {
             inventory_mouse_y: 0,
             seed: 0x1234567890ABCDEF,
             cache_dir: None,
+            mouse_world_pos: (0, 0),
+            mouse_ui_x: 0,
+            mouse_ui_y: 0,
+            show_tooltip: false,
+            show_crosshair: false,
         }
     }
 
@@ -137,6 +147,11 @@ impl Game {
             inventory_mouse_y: 0,
             seed,
             cache_dir,
+            mouse_world_pos: (0, 0),
+            mouse_ui_x: 0,
+            mouse_ui_y: 0,
+            show_tooltip: false,
+            show_crosshair: false,
         }
     }
 
@@ -239,7 +254,7 @@ impl Game {
                 self.cam_y,
                 vw,
                 vh,
-                lighting::ambient_light(),
+                lighting::ambient_light_at_tick(self.tick),
             );
 
             if let Err(e) = renderer.render(
@@ -416,6 +431,56 @@ impl Game {
         if !player_alive {
             self.ui
                 .draw_death_screen(ui_w as usize, ui_h as usize, self.kills, self.score);
+        }
+
+        if self.show_crosshair && !self.inventory_open {
+            let (px, py) = self.player.center(&self.entities);
+            let psx = (px as i32 - self.cam_x) * crate::ui::UI_SCALE;
+            let psy = (py as i32 - self.cam_y) * crate::ui::UI_SCALE;
+            let (mx, my) = (self.mouse_ui_x, self.mouse_ui_y);
+            let dx = mx - psx;
+            let dy = my - psy;
+            let dist = ((dx * dx + dy * dy) as f32).sqrt().max(1.0);
+            let steps = (dist / 6.0) as i32;
+            for i in 1..steps {
+                let t = i as f32 / steps as f32;
+                let x = (psx as f32 + dx as f32 * t) as i32;
+                let y = (psy as f32 + dy as f32 * t) as i32;
+                if x >= 0 && x < ui_w && y >= 0 && y < ui_h {
+                    let alpha = (180.0 * (1.0 - t * 0.4)) as u8;
+                    self.ui
+                        .set_alpha(x, y, '.', [255, 200, 80], [0, 0, 0], alpha);
+                }
+            }
+        }
+
+        if self.show_tooltip && !self.inventory_open {
+            let (mx, my) = self.mouse_world_pos;
+            if self.grid.in_bounds(mx, my) {
+                let cell = self.grid.get(mx, my);
+                let temp = self.grid.get_temp(mx, my);
+                let mat_name = match cell.material {
+                    MaterialId::Empty => "Empty",
+                    MaterialId::Sand => "Sand",
+                    MaterialId::Water => "Water",
+                    MaterialId::Stone => "Stone",
+                    MaterialId::Lava => "Lava",
+                    MaterialId::Wood => "Wood",
+                    MaterialId::Flesh => "Flesh",
+                    MaterialId::Bone => "Bone",
+                    MaterialId::Steam => "Steam",
+                    MaterialId::Fire => "Fire",
+                    MaterialId::Acid => "Acid",
+                    MaterialId::Smoke => "Smoke",
+                    MaterialId::Grass => "Grass",
+                    MaterialId::Dirt => "Dirt",
+                    MaterialId::Stairs => "Stairs",
+                };
+                let tip = format!("{} {:.0}C", mat_name, temp);
+                let tx = (self.mouse_ui_x + 4).min(ui_w - 100);
+                let ty = (self.mouse_ui_y + 4).min(ui_h - 20);
+                self.ui.draw_text(tx, ty, &tip, [220, 220, 240], 220);
+            }
         }
 
         for e in self.entities.all() {
