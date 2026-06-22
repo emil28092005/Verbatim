@@ -121,20 +121,22 @@ impl ChunkedGrid {
         if self.is_bounded() {
             return self.get_chunk_mut(cx, cy);
         }
-        let cx64 = cx as i64;
-        let cy64 = cy as i64;
-        if !self.chunks.contains_key(&(cx64, cy64)) {
+        let key = (cx as i64, cy as i64);
+        if !self.chunks.contains_key(&key) {
+            let mut chunk = Chunk::new();
             if let Some(ref dir) = self.cache_dir {
                 let path = chunk_path(dir, self.seed, cx, cy);
                 if path.exists() {
                     if let Err(e) = self.load_chunk_from_path(&path, cx, cy) {
                         eprintln!("Chunk load failed {} {}: {}", cx, cy, e);
+                    } else {
+                        return self.chunks.get_mut(&key);
                     }
                 }
             }
-            self.chunks.insert((cx64, cy64), Chunk::new());
+            self.chunks.insert(key, chunk);
         }
-        self.chunks.get_mut(&(cx64, cy64))
+        self.chunks.get_mut(&key)
     }
 
     pub fn get_or_create_chunk(&mut self, cx: i32, cy: i32) -> &mut Chunk {

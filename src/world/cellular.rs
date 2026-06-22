@@ -129,8 +129,10 @@ impl CellularAutomaton {
             let (min_x, min_y, max_x, max_y) = dirty;
             let dw = max_x - min_x + 1;
             let dh = max_y - min_y + 1;
-            if dw * dh > 4096 {
+            if dw * dh > 2048 {
                 grid.set_chunk_dirty(cx, cy, None);
+                grid.mark_dirty(min_x + dw / 4, min_y + dh / 4);
+                grid.mark_dirty(max_x - dw / 4, max_y - dh / 4);
                 continue;
             }
 
@@ -512,7 +514,7 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 4096 {
+            if w * h > 2048 {
                 continue;
             }
             let ox = cx * cs;
@@ -604,7 +606,7 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 4096 {
+            if w * h > 2048 {
                 continue;
             }
             let ox = cx * cs;
@@ -710,7 +712,7 @@ impl CellularAutomaton {
             };
             let w = max_x - min_x + 1;
             let h = max_y - min_y + 1;
-            if w * h > 4096 {
+            if w * h > 2048 {
                 continue;
             }
             let ox = cx * cs;

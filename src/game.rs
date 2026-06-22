@@ -663,6 +663,7 @@ impl Game {
         let radius = 3;
         let chunk_size = self.grid.chunk_size as i32;
 
+        let mut to_generate: Vec<(i32, i32)> = Vec::new();
         for dy in -radius..=radius {
             for dx in -radius..=radius {
                 let cx = pcx + dx;
@@ -674,31 +675,34 @@ impl Game {
                 }
                 self.grid.ensure_chunk(cx, cy);
                 if !self.grid.is_chunk_generated(cx, cy) {
-                    WorldGenerator::new(&mut self.ca).generate_chunk(&mut self.grid, cx, cy);
+                    to_generate.push((cx, cy));
                 }
             }
         }
 
+        let gen_budget = 2;
+        for &(cx, cy) in to_generate.iter().take(gen_budget) {
+            WorldGenerator::new(&mut self.ca).generate_chunk(&mut self.grid, cx, cy);
+        }
+
         if let Some(ref dir) = self.cache_dir {
             let save_radius = radius + 2;
-            let to_save: Vec<(i32, i32)> = self
-                .grid
-                .all_chunk_coords()
-                .into_iter()
-                .filter(|(cx, cy)| {
+            if self.tick % 10 == 0 {
+                let coords = self.grid.all_chunk_coords();
+                for (cx, cy) in coords {
                     let dx = (cx - pcx).abs();
                     let dy = (cy - pcy).abs();
-                    (dx > save_radius || dy > save_radius) && self.grid.is_chunk_modified(*cx, *cy)
-                })
-                .collect();
-            let save_idx = (self.tick as usize) % 3;
-            if let Some(&(cx, cy)) = to_save.get(save_idx % to_save.len().max(1)) {
-                let path = crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
-                let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
+                    if (dx > save_radius || dy > save_radius) && self.grid.is_chunk_modified(cx, cy)
+                    {
+                        let path = crate::world::chunked_grid::chunk_path(dir, self.seed, cx, cy);
+                        let _ = self.grid.save_chunk(path.to_str().unwrap(), cx, cy);
+                        break;
+                    }
+                }
             }
         }
 
-        if self.tick % 60 == 0 {
+        if self.tick % 120 == 0 {
             let unload_radius = radius + 4;
             let to_unload: Vec<(i32, i32)> = self
                 .grid
@@ -723,30 +727,38 @@ impl Game {
     }
 
     fn update_active_chunks(&mut self) {
-        self.grid.deactivate_all();
-
-        for e in self.entities.all() {
-            let (cx, cy) = e.center();
-            self.grid.activate_around(cx as i32, cy as i32, 1);
-        }
-
-        for p in self.projectiles.all() {
-            self.grid.activate_around(p.x as i32, p.y as i32, 1);
-        }
-
-        for item in self.items.all() {
-            self.grid.activate_around(item.x, item.y, 1);
-        }
-
         let chunk_size = self.grid.chunk_size as i32;
         let (px, py) = self.player.center(&self.entities);
         let pcx = px as i32 / chunk_size;
         let pcy = py as i32 / chunk_size;
-        let dirty_radius = if self.grid.is_infinite() { 1 } else { 100000 };
 
+        if !self.grid.is_infinite() {
+            for e in self.entities.all() {
+                let (cx, cy) = e.center();
+                self.grid.activate_around(cx as i32, cy as i32, 1);
+            }
+            for (cx, cy) in self.grid.all_chunk_coords() {
+                if self.grid.get_chunk_dirty(cx, cy).is_some() {
+                    self.grid.set_chunk_active(cx, cy, true);
+                }
+            }
+            return;
+        }
+
+        self.grid.deactivate_all();
+
+        for dy in -2..=2 {
+            for dx in -2..=2 {
+                self.grid.set_chunk_active(pcx + dx, pcy + dy, true);
+            }
+        }
+        for e in self.entities.all() {
+            let (cx, cy) = e.center();
+            self.grid.activate_around(cx as i32, cy as i32, 1);
+        }
         for (cx, cy) in self.grid.all_chunk_coords() {
             if self.grid.get_chunk_dirty(cx, cy).is_some() {
-                if (cx - pcx).abs() <= dirty_radius && (cy - pcy).abs() <= dirty_radius {
+                if (cx - pcx).abs() <= 1 && (cy - pcy).abs() <= 1 {
                     self.grid.set_chunk_active(cx, cy, true);
                 }
             }
