@@ -1130,6 +1130,10 @@ impl GraphicsRenderer {
         }
     }
 
+    pub fn cell_pixel_size(&self) -> u32 {
+        self.char_size
+    }
+
     fn check_resize(&mut self) {
         let sl = ash::khr::surface::Instance::new(&self.entry, &self.instance);
         let caps = match unsafe {

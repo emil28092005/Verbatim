@@ -73,6 +73,7 @@ trait GpuRenderer {
     fn grid_w(&self) -> usize;
     fn grid_h(&self) -> usize;
     fn adjust_zoom(&mut self, delta: i32);
+    fn cell_pixel_size(&self) -> u32;
 }
 
 impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
@@ -102,6 +103,9 @@ impl GpuRenderer for verbatim::render::vulkan::VulkanRenderer {
     fn adjust_zoom(&mut self, delta: i32) {
         verbatim::render::vulkan::VulkanRenderer::adjust_zoom(self, delta)
     }
+    fn cell_pixel_size(&self) -> u32 {
+        verbatim::render::vulkan::VulkanRenderer::cell_pixel_size(self)
+    }
 }
 
 impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
@@ -130,6 +134,9 @@ impl GpuRenderer for verbatim::render::graphics::GraphicsRenderer {
     }
     fn adjust_zoom(&mut self, delta: i32) {
         verbatim::render::graphics::GraphicsRenderer::adjust_zoom(self, delta)
+    }
+    fn cell_pixel_size(&self) -> u32 {
+        verbatim::render::graphics::GraphicsRenderer::cell_pixel_size(self)
     }
 }
 
@@ -264,15 +271,18 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                     }
                     WindowEvent::CursorMoved { position, .. } => {
                         input.on_mouse_move(position.x, position.y);
-                        game.mouse_ui_x = position.x as i32;
-                        game.mouse_ui_y = position.y as i32;
-                        let vw = renderer.grid_w() as i32;
-                        let vh = renderer.grid_h() as i32;
+                        let cell_px = renderer.cell_pixel_size() as f64;
+                        let vw = renderer.grid_w();
+                        let vh = renderer.grid_h();
+                        game.mouse_ui_x =
+                            (position.x / cell_px * verbatim::ui::UI_SCALE as f64) as i32;
+                        game.mouse_ui_y =
+                            (position.y / cell_px * verbatim::ui::UI_SCALE as f64) as i32;
                         game.show_tooltip = true;
                         game.show_crosshair = true;
-                        if vw > 0 && vh > 0 {
-                            let wx = game.cam_x + (position.x as i32 * vw / 1600);
-                            let wy = game.cam_y + (position.y as i32 * vh / 900);
+                        if vw > 0 && vh > 0 && cell_px > 0.0 {
+                            let wx = game.cam_x + (position.x / cell_px) as i32;
+                            let wy = game.cam_y + (position.y / cell_px) as i32;
                             game.mouse_world_pos = (wx, wy);
                         }
                     }
@@ -346,9 +356,12 @@ fn run_gpu_mode<R: GpuRenderer>(title: &str) {
                         || input.shoot_up
                         || input.shoot_down
                     {
+                        let cell_px = renderer.cell_pixel_size() as f64;
                         let (px, py) = game.player.center(&game.entities);
-                        let player_screen_x = ((px as i32 - game.cam_x) as f64) * 8.0 + 4.0;
-                        let player_screen_y = ((py as i32 - game.cam_y) as f64) * 8.0 + 4.0;
+                        let player_screen_x =
+                            ((px as i32 - game.cam_x) as f64) * cell_px + cell_px / 2.0;
+                        let player_screen_y =
+                            ((py as i32 - game.cam_y) as f64) * cell_px + cell_px / 2.0;
 
                         let (dx, dy) = if input.shoot_mouse {
                             let mx = input.mouse_x - player_screen_x;
