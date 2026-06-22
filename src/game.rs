@@ -1481,7 +1481,7 @@ impl Game {
                     }
                     let x = near_x + dx;
                     let y = near_y + dy;
-                    let sc = crate::world::worldgen::WORLD_SCALE;
+                    let _sc = crate::world::worldgen::WORLD_SCALE;
                     let clear_h = 8;
                     if !self.grid.in_bounds(x, y) || !self.grid.in_bounds(x, y - clear_h) {
                         continue;

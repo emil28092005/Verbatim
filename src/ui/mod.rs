@@ -391,8 +391,6 @@ impl UiLayer {
         player_state: &crate::entity::player::Player,
     ) {
         let fs = self.font_scale;
-        let fh = self.fh();
-        let fw = self.fw();
         let w = 52 * fs / 2;
         let h = 62 * fs / 2;
         let bg = [22u8, 26, 38];

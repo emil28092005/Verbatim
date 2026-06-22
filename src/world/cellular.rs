@@ -1,11 +1,10 @@
-use crate::world::cell::{default_temp, Cell, MaterialId};
+use crate::world::cell::{Cell, MaterialId};
 use crate::world::chunk::CHUNK_SIZE;
 use crate::world::chunked_grid::ChunkedGrid;
 
 pub struct CellularAutomaton {
     tick: u64,
     rng_state: u64,
-    temps_buf: Vec<f32>,
     light_tick: u64,
 }
 
@@ -14,7 +13,6 @@ impl CellularAutomaton {
         Self {
             tick: 0,
             rng_state: 0x1234567890ABCDEF,
-            temps_buf: Vec::new(),
             light_tick: 0,
         }
     }
@@ -347,10 +345,10 @@ impl CellularAutomaton {
     }
 
     fn update_fire(&mut self, grid: &mut ChunkedGrid, x: i32, y: i32) {
-        let cell = grid.get(x, y);
+        let _cell = grid.get(x, y);
         let temp = grid.get_temp(x, y);
 
-        let (egt, egd) = grid.get_gas(x, y);
+        let (_egt, egd) = grid.get_gas(x, y);
         if egd < 200 {
             grid.set_gas(x, y, 3, (egd + 5).min(255));
         }
